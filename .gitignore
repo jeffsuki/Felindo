@@ -1,0 +1,33 @@
+# --- Secrets: never commit these ---
+.env
+.env.*
+!.env.example
+*.key
+supabase/.temp/
+
+# --- Node / React (arrives with the front end) ---
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Python (seed generator) ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# --- Supabase CLI ---
+.branches/
+.temp/
+
+# --- OS / editor junk ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
