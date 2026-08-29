@@ -1,19 +1,43 @@
 # Truck Repair Management System
 
 Repair-shop dashboard for a truck fleet: complaints → work orders → mechanic
-assignment → time tracking, backed by Supabase (Postgres). See
-[`spec.md`](./spec.md) for the full design. This repo currently contains the
-**data layer** (schema + seed + docs); the React front end is the next step.
+assignment → time tracking, backed by Supabase (Postgres) with a Vite + React
+front end. See [`spec.md`](./spec.md) for the full design and
+[`SETUP_GUIDE.md`](./SETUP_GUIDE.md) for step-by-step setup.
 
 ```
 truck-repair-system/
 ├── spec.md                       # finalized specification
+├── SETUP_GUIDE.md                # push to GitHub + connect Supabase + run
+├── index.html · package.json · vite.config.js
+├── .env.example                  # template for Supabase keys (copy to .env)
+├── src/
+│   ├── main.jsx · App.jsx · index.css   # entry, router, design system
+│   ├── supabaseClient.js
+│   ├── lib/format.js             # status maps + formatting
+│   ├── components/               # Layout, shared UI
+│   └── pages/                    # Dashboard, Queue, Triage, NewComplaint
 ├── supabase/
-│   ├── migrations/0001_init.sql  # schema: tables, triggers, views, RLS
+│   ├── migrations/
+│   │   ├── 0001_init.sql     # schema: tables, triggers, live views, RLS
+│   │   └── 0002_history.sql  # read-only history views
 │   └── seed.sql                  # master data, generated from the xlsx
 └── scripts/
     └── generate_seed.py          # regenerates seed.sql from the spreadsheet
 ```
+
+## The five screens
+
+- **Shop board** (`/`) — trucks currently down, grouped into "in repair" and
+  "at vendor" lanes, each job card showing the mechanic/vendor, status, and a
+  live-ticking labor timer.
+- **Mechanic queue** (`/queue`) — per mechanic, what's *active now* vs *parked*.
+- **Triage & assign** (`/triage`) — break complaints into work orders, assign a
+  mechanic or send to a vendor, and drive each task start → pause → swap → done.
+- **History** (`/history`) — three lenses: a truck's full service record, a
+  mechanic's work log by day, and a daily shop activity feed.
+- **New complaint** (`/new`) — intake form; reporter can be a driver, a
+  mechanic, a free-text name, or no one.
 
 The schema and seed have been validated against Postgres 16: both apply with
 `ON_ERROR_STOP=1`, and a full complaint → assign → start → swap → pause →
@@ -68,10 +92,13 @@ are not in the spreadsheet yet) — edit them there.
 - **Dashboards** read from the `trucks_down`, `mechanic_queue`,
   `truck_operational_status` and `work_order_labor` views.
 
-## Next step: the front end
+## Running the front end
 
-Scaffold a Vite + React app (`npm create vite@latest`), add
-`@supabase/supabase-js`, and build four screens against the views and tables
-above: complaint intake, triage/assign, the mechanic queue board, and the
-trucks-down dashboard. Because v1 has no auth, the anon key with the permissive
-RLS policies is enough to start; replace those policies when you add login.
+```bash
+cp .env.example .env      # fill in your Supabase URL + anon key
+npm install
+npm run dev               # http://localhost:5173
+```
+Because v1 has no auth, the anon key with the permissive RLS policies is enough
+to start; replace those policies when you add login. Full instructions,
+including GitHub and Vercel deploy, are in [`SETUP_GUIDE.md`](./SETUP_GUIDE.md).

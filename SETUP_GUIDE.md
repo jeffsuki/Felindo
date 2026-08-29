@@ -67,10 +67,15 @@ the CLI later), choose a region close to you, and create. Wait ~2 minutes for it
 to provision.
 
 ### B2. Apply the schema
-In the project, open **SQL Editor** (left sidebar) → **New query**. Open
-`supabase/migrations/0001_init.sql` from this folder, copy its entire contents,
-paste into the editor, and click **Run**. You should see "Success. No rows
-returned." This creates all tables, triggers, and views.
+Open **SQL Editor** → **New query**, then run the migration files **in order**.
+Paste the full contents of `supabase/migrations/0001_init.sql`, click **Run**,
+then do the same with `supabase/migrations/0002_history.sql`. Or with psql:
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0001_init.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0002_history.sql
+```
+`0001` builds the tables, triggers, and live views; `0002` adds the read-only
+history views. You should see "Success. No rows returned."
 
 ### B3. Load the master data
 New query again. Open `supabase/seed.sql`, copy all of it, paste, **Run**. You
@@ -102,6 +107,48 @@ When you build the React app, go to **Project Settings → API** and copy the
 `.env.example` as the template). The `.env` file is gitignored — never commit
 it. Never put the `service_role` key or the database password in anything
 prefixed `VITE_`, because that gets shipped to the browser.
+
+---
+
+## Part C — Run the front end
+
+The React app lives in `src/`. It reads your Supabase project through the anon
+key and renders four screens: the shop board, the mechanic queue, triage/assign,
+and the new-complaint form.
+
+### C1. Install Node.js
+You need Node 18+ — check with `node --version`. If missing, install from
+https://nodejs.org (LTS).
+
+### C2. Point the app at your Supabase project
+Copy the template and fill in real values:
+```bash
+cp .env.example .env
+```
+Open `.env` and set:
+```
+VITE_SUPABASE_URL=https://YOUR-REF.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-public-key
+```
+Both come from **Project Settings → API** in Supabase (URL, and the **anon
+public** key — not the service_role key). `.env` is gitignored, so it never
+leaves your machine.
+
+### C3. Install and run
+```bash
+npm install
+npm run dev
+```
+Open the URL it prints (usually http://localhost:5173). You'll see your 84
+trucks' worth of master data driving the app: file a complaint, triage it into
+work orders, start/pause/swap a mechanic, and watch the shop board and queue
+update. If you see a yellow "Not connected" banner, the `.env` values are
+missing or the dev server needs a restart after you added them.
+
+### C4. Deploy (optional, when you're ready to share it)
+Push to GitHub (Part A), then at https://vercel.com import the repo. Add the two
+`VITE_...` variables in Vercel's **Environment Variables**, and it builds and
+gives you a public URL. Every `git push` redeploys automatically.
 
 ---
 

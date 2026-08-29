@@ -123,3 +123,19 @@ mechanic is rejected.
 
 Spare-parts inventory and the parts-request form; explicit test-drive pass/fail
 logging; multi-user auth and role-based access; anything about cost/billing.
+
+## History (added in 0002)
+
+Three read-only lenses over data already captured, requiring no new tables:
+
+- **`truck_service_record`** — every complaint and work order per truck, with
+  who worked it, in-house vs outsourced, dates, and labor. A truck's medical
+  chart.
+- **`mechanic_work_log`** — one row per work session; group by `work_date` for
+  a mechanic's day-by-day log and daily totals.
+- **`daily_shop_log`** — a per-day activity feed: complaints opened, work orders
+  completed, work sent to a vendor, complaints closed.
+
+History depends on the closing discipline: a complaint moves from the active
+board into history when it's marked done, so closing a complaint when the truck
+leaves keeps both the board and the record clean.
