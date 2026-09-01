@@ -3,9 +3,12 @@ import { isConfigured } from '../supabaseClient'
 
 const NAV = [
   { to: '/', label: 'Shop board', end: true },
-  { to: '/queue', label: 'Mechanic queue' },
-  { to: '/triage', label: 'Triage & assign' },
+  { to: '/complaints', label: 'Complaints' },
+  { to: '/triage', label: 'Sorting Work Orders' },
+  { to: '/queue', label: 'Mechanic Management' },
+  { to: '/floor', label: 'Floor' },
   { to: '/history', label: 'History' },
+  { to: '/master', label: 'Master data' },
 ]
 
 export default function Layout({ children }) {
@@ -25,7 +28,7 @@ export default function Layout({ children }) {
           ))}
         </nav>
         <div className="rail-cta">
-          <button className="btn on-dark" onClick={() => navigate('/new')}>
+          <button className="btn on-dark" onClick={() => navigate('/complaints?new=1')}>
             + New complaint
           </button>
         </div>

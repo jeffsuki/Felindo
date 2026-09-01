@@ -20,13 +20,14 @@ truck-repair-system/
 ├── supabase/
 │   ├── migrations/
 │   │   ├── 0001_init.sql     # schema: tables, triggers, live views, RLS
-│   │   └── 0002_history.sql  # read-only history views
+│   │   ├── 0002_history.sql  # read-only history views
+│   │   └── 0003_master_editable.sql  # wide codes, truck codes, nicknames
 │   └── seed.sql                  # master data, generated from the xlsx
 └── scripts/
     └── generate_seed.py          # regenerates seed.sql from the spreadsheet
 ```
 
-## The five screens
+## The six screens
 
 - **Shop board** (`/`) — trucks currently down, grouped into "in repair" and
   "at vendor" lanes, each job card showing the mechanic/vendor, status, and a
@@ -35,9 +36,13 @@ truck-repair-system/
 - **Triage & assign** (`/triage`) — break complaints into work orders, assign a
   mechanic or send to a vendor, and drive each task start → pause → swap → done.
 - **History** (`/history`) — three lenses: a truck's full service record, a
-  mechanic's work log by day, and a daily shop activity feed.
-- **New complaint** (`/new`) — intake form; reporter can be a driver, a
-  mechanic, a free-text name, or no one.
+  mechanic's assignment trail by day, and a daily shop activity feed.
+- **Master data** (`/master`) — searchable, editable lists for trucks, drivers,
+  mechanics, and vendors: add, edit, and retire (status change) while history is
+  preserved. Codes are permanent and 5-digit (`T-00001`, `D-00001`); plates are
+  editable; drivers and mechanics have searchable nicknames.
+- **New complaint** (`/new`) — intake form with searchable pickers; reporter can
+  be a driver, a mechanic, a free-text name, or no one.
 
 The schema and seed have been validated against Postgres 16: both apply with
 `ON_ERROR_STOP=1`, and a full complaint → assign → start → swap → pause →

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Spinner, useToast } from '../components/ui'
+import SearchSelect from '../components/SearchSelect'
 import { DURATION } from '../lib/format'
 
 export default function NewComplaint() {
@@ -26,9 +27,9 @@ export default function NewComplaint() {
     if (!isConfigured) { setLoading(false); return }
     ;(async () => {
       const [t, d, m] = await Promise.all([
-        supabase.from('trucks').select('id,plate,fleet_division,status').eq('status', 'Active').order('plate'),
-        supabase.from('drivers').select('id,code,name,status').eq('status', 'Active').order('name'),
-        supabase.from('mechanics').select('id,code,name,status').eq('status', 'Active').order('code'),
+        supabase.from('trucks').select('id,code,plate,fleet_division,status').eq('status', 'Active').order('plate'),
+        supabase.from('drivers').select('id,code,name,nickname,status').eq('status', 'Active').order('name'),
+        supabase.from('mechanics').select('id,code,name,nickname,status').eq('status', 'Active').order('code'),
       ])
       setTrucks(t.data || []); setDrivers(d.data || []); setMechanics(m.data || [])
       setLoading(false)
@@ -74,12 +75,16 @@ export default function NewComplaint() {
         <form className="form" onSubmit={submit}>
           <div className="field">
             <label>Truck</label>
-            <select value={truckId} onChange={e => setTruckId(e.target.value)}>
-              <option value="">Select a truck…</option>
-              {trucks.map(t => (
-                <option key={t.id} value={t.id}>{t.plate} — {t.fleet_division || 'Truck'}</option>
-              ))}
-            </select>
+            <SearchSelect
+              value={truckId} onChange={setTruckId}
+              placeholder="Search truck by plate or code…"
+              options={trucks.map(t => ({
+                value: t.id,
+                label: t.plate,
+                sub: t.code,
+                search: `${t.code} ${t.fleet_division || ''}`,
+              }))}
+            />
           </div>
 
           <div className="field">
@@ -91,16 +96,26 @@ export default function NewComplaint() {
               ))}
             </div>
             {reporterType === 'driver' && (
-              <select value={driverId} onChange={e => setDriverId(e.target.value)}>
-                <option value="">Select driver (optional)…</option>
-                {drivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
+              <SearchSelect
+                value={driverId} onChange={setDriverId}
+                placeholder="Search driver by name or nickname…"
+                options={drivers.map(d => ({
+                  value: d.id,
+                  label: d.nickname ? `${title(d.name)} (${d.nickname})` : title(d.name),
+                  sub: d.code, search: `${d.code} ${d.nickname || ''}`,
+                }))}
+              />
             )}
             {reporterType === 'mechanic' && (
-              <select value={mechanicId} onChange={e => setMechanicId(e.target.value)}>
-                <option value="">Select mechanic (optional)…</option>
-                {mechanics.map(m => <option key={m.id} value={m.id}>{title(m.name)} ({m.code})</option>)}
-              </select>
+              <SearchSelect
+                value={mechanicId} onChange={setMechanicId}
+                placeholder="Search mechanic by name or nickname…"
+                options={mechanics.map(m => ({
+                  value: m.id,
+                  label: m.nickname ? `${title(m.name)} (${m.nickname})` : title(m.name),
+                  sub: m.code, search: `${m.code} ${m.nickname || ''}`,
+                }))}
+              />
             )}
             {reporterType === 'other' && (
               <input value={reporterName} onChange={e => setReporterName(e.target.value)}

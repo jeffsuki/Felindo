@@ -67,15 +67,30 @@ the CLI later), choose a region close to you, and create. Wait ~2 minutes for it
 to provision.
 
 ### B2. Apply the schema
-Open **SQL Editor** → **New query**, then run the migration files **in order**.
-Paste the full contents of `supabase/migrations/0001_init.sql`, click **Run**,
-then do the same with `supabase/migrations/0002_history.sql`. Or with psql:
+Open **SQL Editor** → **New query**, then run the migration files **in order**,
+each as its own query: `0001_init.sql`, `0002_history.sql`,
+`0003_master_editable.sql`, `0004_waiting_reason.sql`, `0005_wo_description.sql`,
+`0006_started_and_helper.sql`, `0007_pin_complaints.sql`, `0008_complaint_code_month.sql`, `0009_resolution.sql`, `0010_external_assignee.sql`, `0011_shopboard_external.sql`, `0012_wo_code_month.sql`, then `0013_void.sql`. Or with psql:
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0001_init.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0002_history.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0003_master_editable.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0004_waiting_reason.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0005_wo_description.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0006_started_and_helper.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0007_pin_complaints.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0008_complaint_code_month.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0009_resolution.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0010_external_assignee.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0011_shopboard_external.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0012_wo_code_month.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0013_void.sql
 ```
-`0001` builds the tables, triggers, and live views; `0002` adds the read-only
-history views. You should see "Success. No rows returned."
+`0001` core; `0002` history; `0003` wide codes + nicknames; `0004` waiting
+reason; `0005` work-order descriptions in the views; `0006` editable start time
++ a "helped by" note. **Important ordering:** run the seed (step B3) *before*
+`0003`. If your database is already set up, run only the migrations you haven't
+applied yet (e.g. just `0013_void.sql`).
 
 ### B3. Load the master data
 New query again. Open `supabase/seed.sql`, copy all of it, paste, **Run**. You
@@ -165,6 +180,35 @@ supabase db push                                # applies migrations/ in order
 `db push` applies files in `supabase/migrations/` in order. Keep adding new
 numbered files (`0002_...sql`, `0003_...sql`) as the system grows — never edit
 `0001_init.sql` after it's been applied in production.
+
+---
+
+## Shop password (optional gate)
+
+To require a password before the app opens, set `VITE_APP_PASSWORD` in `.env`
+(and in Vercel's env vars if deployed). Leaving it blank disables the gate. The
+same password confirms voiding an entry. This is a curtain, not a lock — it
+stops casual and accidental access, but because the app has no backend auth it
+does not stop a determined technical user. For real per-user logins, that's a
+separate build (Supabase Auth + row-level security).
+
+## Clearing test data before go-live
+
+When you're done testing and want a clean slate, run
+`supabase/reset_test_data.sql` **once** in the Supabase SQL editor. It
+hard-deletes all complaints, work orders, and time logs and resets the code
+counters (so real data starts at `CMP-yyyymm-00001` / `WO-yyyymm-00001`), while
+keeping every truck, driver, mechanic, and vendor. It's destructive and
+irreversible, so only run it when you actually want everything transactional
+gone.
+
+## Voiding a mistaken entry
+
+Day to day, don't hard-delete — **void** instead. On a complaint (Complaints →
+expand) or a work order (Sorting Work Orders → Edit), the "Void" action hides
+the entry from every screen and the archive but keeps the row, so nothing breaks
+and it's reversible in the database if needed. If `VITE_APP_PASSWORD` is set,
+voiding asks for it first.
 
 ---
 

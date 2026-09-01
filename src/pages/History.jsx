@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Plate, Badge, Spinner, Empty } from '../components/ui'
-import { WO_STATUS, EVENT_TYPES, fmtDuration, fmtDate, fmtDateShort } from '../lib/format'
+import SearchSelect from '../components/SearchSelect'
+import { WO_STATUS, EVENT_TYPES, fmtDuration, fmtDate, fmtDateShort, woTitle } from '../lib/format'
 
 const LENSES = [['truck', 'By truck'], ['mechanic', 'By mechanic'], ['day', 'By day']]
 
@@ -38,7 +39,7 @@ function TruckLens() {
 
   useEffect(() => {
     if (!isConfigured) return
-    supabase.from('trucks').select('id,plate,fleet_division,status').order('plate')
+    supabase.from('trucks').select('id,code,plate,fleet_division,status').order('plate')
       .then(({ data }) => setTrucks(data || []))
   }, [])
 
@@ -77,14 +78,16 @@ function TruckLens() {
       <div className="controls">
         <div className="field grow">
           <label>Truck</label>
-          <select value={truckId} onChange={e => setTruckId(e.target.value)}>
-            <option value="">Select a truck…</option>
-            {trucks.map(t => (
-              <option key={t.id} value={t.id}>
-                {t.plate} — {t.fleet_division || 'Truck'}{t.status !== 'Active' ? ` (${t.status})` : ''}
-              </option>
-            ))}
-          </select>
+          <SearchSelect
+            value={truckId} onChange={setTruckId}
+            placeholder="Search truck by plate or code…"
+            options={trucks.map(t => ({
+              value: t.id,
+              label: t.plate,
+              sub: t.code + (t.status !== 'Active' ? ` · ${t.status}` : ''),
+              search: `${t.code} ${t.fleet_division || ''} ${t.status}`,
+            }))}
+          />
         </div>
       </div>
 
@@ -117,9 +120,10 @@ function TruckLens() {
                     return (
                       <div className="wo-row" key={w.work_order_id}>
                         <div className="l">
-                          <div className="code">{w.wo_code} · {w.specialty || '—'}</div>
-                          <div className="who">
+                          <div className="who" style={{ fontWeight: 600 }}>{woTitle(w)}</div>
+                          <div className="code">
                             {w.is_outsourced ? `→ ${w.vendor_name || 'vendor'}` : (w.mechanic_name || 'Unassigned')}
+                            {w.specialty ? ` · ${w.specialty}` : ''} · {w.wo_code}
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -149,7 +153,7 @@ function MechanicLens() {
 
   useEffect(() => {
     if (!isConfigured) return
-    supabase.from('mechanics').select('id,code,name,status').order('code')
+    supabase.from('mechanics').select('id,code,name,nickname,status').order('code')
       .then(({ data }) => setMechanics(data || []))
   }, [])
 
@@ -183,27 +187,31 @@ function MechanicLens() {
       <div className="controls">
         <div className="field grow">
           <label>Mechanic</label>
-          <select value={mechanicId} onChange={e => setMechanicId(e.target.value)}>
-            <option value="">Select a mechanic…</option>
-            {mechanics.map(m => (
-              <option key={m.id} value={m.id}>{title(m.name)} ({m.code}){m.status !== 'Active' ? ` · ${m.status}` : ''}</option>
-            ))}
-          </select>
+          <SearchSelect
+            value={mechanicId} onChange={setMechanicId}
+            placeholder="Search mechanic by name or nickname…"
+            options={mechanics.map(m => ({
+              value: m.id,
+              label: m.nickname ? `${title(m.name)} (${m.nickname})` : title(m.name),
+              sub: m.code + (m.status !== 'Active' ? ` · ${m.status}` : ''),
+              search: `${m.code} ${m.nickname || ''} ${m.status}`,
+            }))}
+          />
         </div>
         <div className="field"><label>From</label><input type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
         <div className="field"><label>To</label><input type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
       </div>
 
       {!mechanicId ? (
-        <Empty title="Pick a mechanic">Their work sessions, grouped by day, show here.</Empty>
-      ) : loading ? <Spinner label="Loading work log…" /> : days.length === 0 ? (
-        <Empty title="No sessions in this range">Try a wider date range.</Empty>
+        <Empty title="Pick a mechanic">Their assignment trail — which jobs they were put on and when — shows here.</Empty>
+      ) : loading ? <Spinner label="Loading trail…" /> : days.length === 0 ? (
+        <Empty title="No assignments in this range">Try a wider date range.</Empty>
       ) : (
         <>
           <div className="metrics">
-            <div className="metric"><div className="k">Labor logged</div><div className="v">{fmtDuration(stats.totalLabor)}</div></div>
+            <div className="metric"><div className="k">Time on jobs (approx)</div><div className="v">{fmtDuration(stats.totalLabor)}</div></div>
             <div className="metric"><div className="k">Jobs touched</div><div className="v">{stats.jobs}</div></div>
-            <div className="metric"><div className="k">Days worked</div><div className="v">{stats.days}</div></div>
+            <div className="metric"><div className="k">Days active</div><div className="v">{stats.days}</div></div>
           </div>
 
           {days.map(d => (
@@ -211,20 +219,25 @@ function MechanicLens() {
               <div className="hist-head">
                 <span className="title">{fmtDayLabel(d.date)}</span>
                 <div className="right">
-                  <span className="timer static">{fmtDuration(d.total)}</span>
-                  <span className="model">{d.sessions.length} session{d.sessions.length === 1 ? '' : 's'}</span>
+                  <span className="timer static">~{fmtDuration(d.total)}</span>
+                  <span className="model">{d.sessions.length} assignment{d.sessions.length === 1 ? '' : 's'}</span>
                 </div>
               </div>
               <div className="hist-body">
                 {d.sessions.map(s => (
                   <div className="wo-row" key={s.session_id}>
                     <div className="l">
-                      <div className="who"><Plate>{s.plate}</Plate> <span className="spec" style={{ marginLeft: 6, color: 'var(--muted)' }}>{s.specialty || ''}</span></div>
-                      <div className="code">{s.wo_code}</div>
+                      <div className="who" style={{ fontWeight: 600 }}>{woTitle(s)}</div>
+                      <div className="code">
+                        <Plate>{s.plate}</Plate>{s.specialty ? ` · ${s.specialty}` : ''} · {s.wo_code}
+                        {' · '}assigned {fmtClock(s.started_at)}
+                        {s.running ? ', ongoing' : `, moved off ${fmtClock(s.ended_at)}`}
+                      </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span className={'timer' + (s.running ? '' : ' static')}>{fmtDuration(s.session_seconds)}</span>
-                      {s.running && <Badge tone="warn">Running</Badge>}
+                      <span className={'timer' + (s.running ? '' : ' static')}>
+                        {s.running ? `~${fmtDuration(s.session_seconds)} so far` : `spanned ${fmtDuration(s.session_seconds)}`}
+                      </span>
                     </div>
                   </div>
                 ))}

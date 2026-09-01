@@ -1,26 +1,33 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
-import { Plate, Badge, Spinner, Empty, useNow } from '../components/ui'
-import { WO_STATUS, fmtDuration } from '../lib/format'
+import { Plate, Badge, Spinner, useToast } from '../components/ui'
+import { WO_STATUS, woTitle } from '../lib/format'
 
 export default function Queue() {
-  const [queue, setQueue] = useState([])
+  const { show, node } = useToast()
+  const [pool, setPool] = useState([])          // unassigned work orders
+  const [queue, setQueue] = useState([])        // mechanic_queue rows (current load)
   const [mechanics, setMechanics] = useState([])
+  const [selected, setSelected] = useState(new Set())
+  const [groupBy, setGroupBy] = useState('specialty')  // 'specialty' | 'truck'
   const [loading, setLoading] = useState(true)
-  const [fetchedAt, setFetchedAt] = useState(Date.now())
-  const now = useNow(true)
 
   async function load() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
-    const [q, m] = await Promise.all([
+    const [wo, q, m] = await Promise.all([
+      supabase.from('work_orders')
+        .select('id,code,status,description,complaint:complaints(status,truck:trucks(plate)),specialty:specialties(label)')
+        .eq('status', 'unassigned').eq('is_outsourced', false).eq('voided', false),
       supabase.from('mechanic_queue').select('*'),
-      supabase.from('mechanics').select('id,code,name,can_lift,status')
+      supabase.from('mechanics').select('id,code,name,nickname,can_lift')
         .eq('status', 'Active').eq('employment_type', 'in_house').order('code'),
     ])
+    const openPool = (wo.data || []).filter(w => ['open', 'in_progress'].includes(w.complaint?.status))
+    setPool(openPool)
     setQueue(q.data || [])
     setMechanics(m.data || [])
-    setFetchedAt(Date.now())
+    setSelected(new Set())
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -34,71 +41,167 @@ export default function Queue() {
     return map
   }, [queue])
 
+  function toggle(id) {
+    setSelected(s => {
+      const n = new Set(s)
+      n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
+  }
+
+  async function assignTo(mech) {
+    if (selected.size === 0) { show('Select work on the left first.', true); return }
+    const ids = [...selected]
+    const { error } = await supabase.from('work_orders')
+      .update({ assigned_mechanic_id: mech.id, status: 'assigned' }).in('id', ids)
+    if (error) return show(error.message, true)
+    show(`${ids.length} job${ids.length === 1 ? '' : 's'} \u2192 ${title(mech.name)}.`)
+    load()
+  }
+
+  async function unassign(workOrderId) {
+    const { error } = await supabase.from('work_orders')
+      .update({ assigned_mechanic_id: null, external_assignee: null, status: 'unassigned', waiting_reason: null, helper_note: null })
+      .eq('id', workOrderId)
+    if (error) return show(error.message, true)
+    show('Sent back to unassigned.')
+    load()
+  }
+
+  // group the unassigned pool by specialty or by truck
+  const groups = useMemo(() => {
+    const m = new Map()
+    for (const w of pool) {
+      const key = groupBy === 'truck'
+        ? (w.complaint?.truck?.plate || '\u2014')
+        : (w.specialty?.label || 'Unspecified')
+      if (!m.has(key)) m.set(key, [])
+      m.get(key).push(w)
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [pool, groupBy])
+
   if (loading) return (
     <>
-      <div className="topbar"><div><h1>Mechanic queue</h1></div></div>
-      <div className="content"><Spinner label="Loading queue…" /></div>
+      <div className="topbar"><div><h1>Mechanic Management</h1></div></div>
+      <div className="content"><Spinner label="Loading board\u2026" /></div>
     </>
   )
+
+  const armed = selected.size > 0
 
   return (
     <>
       <div className="topbar">
         <div>
-          <h1>Mechanic queue</h1>
-          <div className="sub">What each mechanic is working now, and what's stacked behind</div>
+          <h1>Mechanic Management</h1>
+          <div className="sub">Pick unassigned work on the left, then click a mechanic to assign it</div>
         </div>
         <button className="btn ghost" onClick={load}>Refresh</button>
       </div>
       <div className="content">
-        {mechanics.length === 0 ? (
-          <Empty title="No active mechanics">Add mechanics in the master data to see the queue.</Empty>
-        ) : mechanics.map(m => {
-          const q = byMech.get(m.id) || { active: [], parked: [] }
-          return (
-            <div className="mech" key={m.id}>
-              <div className="mech-head">
-                <span className="name">{title(m.name)}</span>
-                <span className="code">{m.code}</span>
-                {m.can_lift && <span className="lift"><Badge tone="accent">Heavy lifting</Badge></span>}
-              </div>
-              <div className="mech-cols">
-                <QueueCol title="Active now" items={q.active} now={now} fetchedAt={fetchedAt} empty="Free — nothing in progress" live />
-                <QueueCol title="Parked / queued" items={q.parked} now={now} fetchedAt={fetchedAt} empty="Nothing queued" />
-              </div>
+        <div className="board">
+          <div className="pool">
+            <div className="pool-head">
+              <h3>Unassigned</h3>
+              <span className="crow-wocount">{pool.length}</span>
+              {pool.length > 0 && (
+                <div className="seg-lens" style={{ marginLeft: 'auto' }}>
+                  <button className={groupBy === 'specialty' ? 'on' : ''} onClick={() => setGroupBy('specialty')}>Specialty</button>
+                  <button className={groupBy === 'truck' ? 'on' : ''} onClick={() => setGroupBy('truck')}>Truck</button>
+                </div>
+              )}
             </div>
-          )
-        })}
-      </div>
-    </>
-  )
-}
+            <div className="pool-body">
+              {pool.length === 0 ? (
+                <div className="pool-hint">Nothing waiting. New work orders created in Sorting Work Orders show up here to distribute.</div>
+              ) : (
+                <>
+                  <div className="pool-hint">
+                    {armed ? `${selected.size} selected \u2014 click a mechanic \u2192` : 'Tap jobs to select, then click a mechanic.'}
+                  </div>
+                  {groups.map(([key, items]) => (
+                    <div key={key} className="pool-group">
+                      <div className="pool-group-head">{key} <span>{items.length}</span></div>
+                      {items.map(w => (
+                        <div key={w.id} className={'pchip' + (selected.has(w.id) ? ' sel' : '')} onClick={() => toggle(w.id)}>
+                          <span className="box">{selected.has(w.id) ? '\u2713' : ''}</span>
+                          <div className="pc-main">
+                            <div className="pc-spec">
+                              <Plate>{w.complaint?.truck?.plate}</Plate>
+                              <span style={{ marginLeft: 6, color: 'var(--muted)' }}>{w.specialty?.label || '\u2014'}</span>
+                            </div>
+                            <div className="pc-code">{woTitle({ wo_description: w.description, specialty: w.specialty?.label, wo_code: w.code })}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
 
-function QueueCol({ title, items, empty, now, fetchedAt, live }) {
-  return (
-    <div className="mech-col">
-      <h4>{title} · {items.length}</h4>
-      {items.length === 0
-        ? <div style={{ color: 'var(--muted)', fontSize: 13, padding: '4px 0' }}>{empty}</div>
-        : items.map(w => {
-          const st = WO_STATUS[w.wo_status] || WO_STATUS.assigned
-          const secs = live
-            ? (w.labor_seconds || 0) + Math.max(0, (now - fetchedAt) / 1000)
-            : (w.labor_seconds || 0)
-          return (
-            <div className="mech-item" key={w.work_order_id}>
-              <div>
-                <Plate>{w.plate}</Plate>{' '}
-                <span style={{ fontSize: 12, color: 'var(--muted)' }}>{w.specialty || ''}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className={'timer' + (live ? '' : ' static')}>{fmtDuration(secs)}</span>
-                <Badge tone={st.tone}>{st.label}</Badge>
-              </div>
+          <div>
+            <div className="mechs-hint">
+              {armed
+                ? `${selected.size} job${selected.size === 1 ? '' : 's'} selected \u2014 click any mechanic below to assign.`
+                : 'This is the live load per mechanic. Select work at left to start assigning.'}
             </div>
-          )
-        })}
-    </div>
+            <div className="mechs-grid">
+              {mechanics.map(m => {
+                const q = byMech.get(m.id) || { active: [], parked: [] }
+                const total = q.active.length + q.parked.length
+                return (
+                  <div key={m.id} className={'mcard' + (armed ? ' arm' : '')} onClick={() => armed && assignTo(m)}>
+                    <div className="mcard-head">
+                      <span className="nm">{title(m.name)}</span>
+                      <span className="cd">{m.code}</span>
+                      {armed
+                        ? <span className="assign-cue">Assign here</span>
+                        : m.can_lift && <span style={{ marginLeft: 'auto' }}><Badge tone="accent">Lifts</Badge></span>}
+                    </div>
+                    <div className="mcard-body">
+                      {total === 0 ? (
+                        <div className="mcard-idle">Free \u2014 no jobs</div>
+                      ) : (
+                        <>
+                          {q.active.map(j => (
+                            <div className="mjob act" key={j.work_order_id}>
+                              <span className="dotk" /><Plate>{j.plate}</Plate>
+                              <span style={{ color: 'var(--muted)', fontSize: 12 }}>{j.specialty}</span>
+                              <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <Badge tone="warn">Working</Badge>
+                                <button className="unassign-x" title="Send back to unassigned"
+                                  onClick={e => { e.stopPropagation(); unassign(j.work_order_id) }}>{'\u2715'}</button>
+                              </span>
+                            </div>
+                          ))}
+                          {q.parked.map(j => (
+                            <div className="mjob park" key={j.work_order_id}>
+                              <span className="dotk" /><Plate>{j.plate}</Plate>
+                              <span style={{ color: 'var(--muted)', fontSize: 12 }}>
+                                {j.specialty}{j.wo_status === 'paused' && j.waiting_reason ? ` · ${j.waiting_reason}` : ''}
+                              </span>
+                              <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <span className="mcard-count">{(WO_STATUS[j.wo_status] || {}).label}</span>
+                                <button className="unassign-x" title="Send back to unassigned"
+                                  onClick={e => { e.stopPropagation(); unassign(j.work_order_id) }}>{'\u2715'}</button>
+                              </span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+      {node}
+    </>
   )
 }
 
