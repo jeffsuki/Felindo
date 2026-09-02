@@ -9,7 +9,8 @@ export default function Queue() {
   const [queue, setQueue] = useState([])        // mechanic_queue rows (current load)
   const [mechanics, setMechanics] = useState([])
   const [selected, setSelected] = useState(new Set())
-  const [groupBy, setGroupBy] = useState('specialty')  // 'specialty' | 'truck'
+  const [groupBy, setGroupBy] = useState('truck')  // 'specialty' | 'truck'
+  const [openGroups, setOpenGroups] = useState(new Set())
   const [loading, setLoading] = useState(true)
 
   async function load() {
@@ -45,6 +46,13 @@ export default function Queue() {
     setSelected(s => {
       const n = new Set(s)
       n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
+  }
+  function toggleGroup(key) {
+    setOpenGroups(s => {
+      const n = new Set(s)
+      n.has(key) ? n.delete(key) : n.add(key)
       return n
     })
   }
@@ -120,23 +128,29 @@ export default function Queue() {
                   <div className="pool-hint">
                     {armed ? `${selected.size} selected \u2014 click a mechanic \u2192` : 'Tap jobs to select, then click a mechanic.'}
                   </div>
-                  {groups.map(([key, items]) => (
-                    <div key={key} className="pool-group">
-                      <div className="pool-group-head">{key} <span>{items.length}</span></div>
-                      {items.map(w => (
-                        <div key={w.id} className={'pchip' + (selected.has(w.id) ? ' sel' : '')} onClick={() => toggle(w.id)}>
-                          <span className="box">{selected.has(w.id) ? '\u2713' : ''}</span>
-                          <div className="pc-main">
-                            <div className="pc-spec">
-                              <Plate>{w.complaint?.truck?.plate}</Plate>
-                              <span style={{ marginLeft: 6, color: 'var(--muted)' }}>{w.specialty?.label || '\u2014'}</span>
-                            </div>
-                            <div className="pc-code">{woTitle({ wo_description: w.description, specialty: w.specialty?.label, wo_code: w.code })}</div>
-                          </div>
+                  {groups.map(([key, items]) => {
+                    const open = openGroups.has(key)
+                    const selCount = items.filter(w => selected.has(w.id)).length
+                    return (
+                      <div key={key} className="pool-group">
+                        <div className="pool-group-head clickable" onClick={() => toggleGroup(key)}>
+                          <span className="pg-caret">{open ? '\u25be' : '\u25b8'}</span>
+                          <span className="pg-key">{key}</span>
+                          <span className="pg-count">{items.length}</span>
+                          {selCount > 0 && <span className="pg-sel">{selCount} selected</span>}
                         </div>
-                      ))}
-                    </div>
-                  ))}
+                        {open && items.map(w => (
+                          <div key={w.id} className={'pchip' + (selected.has(w.id) ? ' sel' : '')} onClick={() => toggle(w.id)}>
+                            <span className="box">{selected.has(w.id) ? '\u2713' : ''}</span>
+                            <div className="pc-main">
+                              <div className="pc-spec">{woTitle({ wo_description: w.description, specialty: w.specialty?.label, wo_code: w.code })}</div>
+                              <div className="pc-code"><Plate>{w.complaint?.truck?.plate}</Plate> · {w.specialty?.label || '\u2014'}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
                 </>
               )}
             </div>
@@ -168,9 +182,12 @@ export default function Queue() {
                         <>
                           {q.active.map(j => (
                             <div className="mjob act" key={j.work_order_id}>
-                              <span className="dotk" /><Plate>{j.plate}</Plate>
-                              <span style={{ color: 'var(--muted)', fontSize: 12 }}>{j.specialty}</span>
-                              <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <span className="dotk" />
+                              <div className="mjob-main">
+                                <div className="mjob-desc">{woTitle(j)}</div>
+                                <div className="mjob-sub"><Plate>{j.plate}</Plate> {j.specialty || ''}</div>
+                              </div>
+                              <span className="mjob-right">
                                 <Badge tone="warn">Working</Badge>
                                 <button className="unassign-x" title="Send back to unassigned"
                                   onClick={e => { e.stopPropagation(); unassign(j.work_order_id) }}>{'\u2715'}</button>
@@ -179,11 +196,15 @@ export default function Queue() {
                           ))}
                           {q.parked.map(j => (
                             <div className="mjob park" key={j.work_order_id}>
-                              <span className="dotk" /><Plate>{j.plate}</Plate>
-                              <span style={{ color: 'var(--muted)', fontSize: 12 }}>
-                                {j.specialty}{j.wo_status === 'paused' && j.waiting_reason ? ` · ${j.waiting_reason}` : ''}
-                              </span>
-                              <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <span className="dotk" />
+                              <div className="mjob-main">
+                                <div className="mjob-desc">{woTitle(j)}</div>
+                                <div className="mjob-sub">
+                                  <Plate>{j.plate}</Plate> {j.specialty || ''}
+                                  {j.wo_status === 'paused' && j.waiting_reason ? <span style={{ color: '#7A5AA6' }}> · {j.waiting_reason}</span> : ''}
+                                </div>
+                              </div>
+                              <span className="mjob-right">
                                 <span className="mcard-count">{(WO_STATUS[j.wo_status] || {}).label}</span>
                                 <button className="unassign-x" title="Send back to unassigned"
                                   onClick={e => { e.stopPropagation(); unassign(j.work_order_id) }}>{'\u2715'}</button>

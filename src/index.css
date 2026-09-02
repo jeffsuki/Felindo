@@ -341,9 +341,22 @@ textarea { resize: vertical; min-height: 72px; }
 .mjob.park .dotk { background: var(--muted); }
 .mcard-idle { font-size: 13px; color: var(--muted); padding: 4px 0; }
 .mcard-count { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
-.pool-group { margin-bottom: 12px; }
-.pool-group-head { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); padding: 4px 2px 6px; display: flex; gap: 6px; align-items: center; }
-.pool-group-head span { font-family: var(--font-mono); font-weight: 500; color: var(--muted); }
+.pool-group { margin-bottom: 8px; }
+.pool-group-head { font-size: 12px; font-weight: 700; color: var(--text-2); padding: 7px 4px; display: flex; gap: 7px; align-items: center; }
+.pool-group-head.clickable { cursor: pointer; border-radius: 5px; }
+.pool-group-head.clickable:hover { background: #F1F3F5; }
+.pg-caret { color: var(--muted); font-size: 11px; width: 10px; }
+.pg-key { font-family: var(--font-mono); letter-spacing: .03em; }
+.pg-count { font-family: var(--font-mono); font-weight: 500; color: var(--muted); background: #EEF1F3; border-radius: 100px; padding: 0 7px; font-size: 11px; }
+.pg-sel { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--accent); }
+.pc-spec { font-size: 13px; font-weight: 600; }
+.pc-code { font-family: var(--font-mono); font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; margin-top: 2px; }
+
+.mjob { display: flex; align-items: center; gap: 8px; padding: 7px 0; }
+.mjob-main { min-width: 0; flex: 1; }
+.mjob-desc { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mjob-sub { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; margin-top: 1px; }
+.mjob-right { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
 .unassign-x { border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 4px; }
 .unassign-x:hover { color: var(--urgent); background: var(--urgent-wash); }
 
