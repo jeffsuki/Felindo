@@ -2,283 +2,198 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Plate, Badge, Spinner, Empty } from '../components/ui'
 import SearchSelect from '../components/SearchSelect'
-import { WO_STATUS, EVENT_TYPES, fmtDuration, fmtDate, fmtDateShort, woTitle } from '../lib/format'
+import { WO_STATUS, EVENT_TYPES, fmtDate } from '../lib/format'
 
-const LENSES = [['truck', 'By truck'], ['mechanic', 'By mechanic'], ['day', 'By day']]
+const TABS = [['archive', 'Archive'], ['logs', 'Logs']]
 
 export default function History() {
-  const [lens, setLens] = useState('truck')
+  const [tab, setTab] = useState('archive')
   return (
     <>
       <div className="topbar">
         <div>
           <h1>History</h1>
-          <div className="sub">Work done, by truck, by mechanic, or by day</div>
+          <div className="sub">Look back at complaints and their work \u2014 or the day-by-day log</div>
         </div>
         <div className="seg-lens">
-          {LENSES.map(([v, l]) => (
-            <button key={v} className={lens === v ? 'on' : ''} onClick={() => setLens(v)}>{l}</button>
+          {TABS.map(([v, l]) => (
+            <button key={v} className={tab === v ? 'on' : ''} onClick={() => setTab(v)}>{l}</button>
           ))}
         </div>
       </div>
       <div className="content">
-        {lens === 'truck' && <TruckLens />}
-        {lens === 'mechanic' && <MechanicLens />}
-        {lens === 'day' && <DayLens />}
+        {tab === 'archive' ? <Archive /> : <Logs />}
       </div>
     </>
   )
 }
 
-/* ---------------- Truck service record ---------------- */
-function TruckLens() {
-  const [trucks, setTrucks] = useState([])
-  const [truckId, setTruckId] = useState('')
+/* ---------------- Archive: complaints + work orders, filtered ---------------- */
+const CATS = [['all', 'All'], ['truck', 'By truck'], ['mechanic', 'By mechanic'], ['driver', 'By driver']]
+
+function Archive() {
+  const [cat, setCat] = useState('all')
+  const [entityId, setEntityId] = useState('')
+  const [from, setFrom] = useState(daysAgo(90))
+  const [to, setTo] = useState(today())
   const [rows, setRows] = useState([])
+  const [refs, setRefs] = useState({ trucks: [], mechanics: [], drivers: [] })
   const [loading, setLoading] = useState(false)
+  const [expanded, setExpanded] = useState(null)
 
   useEffect(() => {
     if (!isConfigured) return
-    supabase.from('trucks').select('id,code,plate,fleet_division,status').order('plate')
-      .then(({ data }) => setTrucks(data || []))
+    Promise.all([
+      supabase.from('trucks').select('id,code,plate').order('plate'),
+      supabase.from('mechanics').select('id,code,name,nickname').order('code'),
+      supabase.from('drivers').select('id,code,name,nickname').order('name'),
+    ]).then(([t, m, d]) => setRefs({ trucks: t.data || [], mechanics: m.data || [], drivers: d.data || [] }))
   }, [])
 
   useEffect(() => {
-    if (!truckId) { setRows([]); return }
+    if (!isConfigured) return
+    if (cat !== 'all' && !entityId) { setRows([]); return }
     setLoading(true)
-    supabase.from('truck_service_record').select('*').eq('truck_id', truckId)
-      .order('reported_at', { ascending: false }).order('wo_code')
-      .then(({ data }) => { setRows(data || []); setLoading(false) })
-  }, [truckId])
-
-  // group rows -> complaints (a complaint with no WOs still yields one row with null wo)
-  const complaints = useMemo(() => {
-    const map = new Map()
-    for (const r of rows) {
-      if (!map.has(r.complaint_id)) {
-        map.set(r.complaint_id, {
-          id: r.complaint_id, code: r.complaint_code, desc: r.complaint_description,
-          status: r.complaint_status, reported_at: r.reported_at, closed_at: r.closed_at,
-          priority: r.priority, wos: [],
-        })
+    let query = supabase.from('complaints')
+      .select('id,code,description,resolution,status,priority,reported_at,closed_at,reporter_name,reported_by_driver_id,truck:trucks(plate,code),driver:drivers(name),mechanic:mechanics(name),work_orders(id,code,status,description,external_assignee,assigned_mechanic_id,specialty:specialties(label),mechanic:mechanics(name),vendor:vendors(name))')
+      .eq('voided', false)
+      .gte('reported_at', from + 'T00:00:00')
+      .lte('reported_at', to + 'T23:59:59')
+      .order('reported_at', { ascending: false })
+    if (cat === 'truck') query = query.eq('truck_id', entityId)
+    if (cat === 'driver') query = query.eq('reported_by_driver_id', entityId)
+    query.then(({ data }) => {
+      let list = data || []
+      if (cat === 'mechanic') {
+        list = list.filter(c => (c.work_orders || []).some(w => w.assigned_mechanic_id === entityId))
       }
-      if (r.work_order_id) map.get(r.complaint_id).wos.push(r)
-    }
-    return [...map.values()]
-  }, [rows])
+      setRows(list)
+      setLoading(false)
+    })
+  }, [cat, entityId, from, to])
 
-  const stats = useMemo(() => {
-    const totalLabor = rows.reduce((a, r) => a + (r.labor_seconds || 0), 0)
-    const lastClosed = complaints.map(c => c.closed_at).filter(Boolean).sort().pop()
-    return { complaints: complaints.length, totalLabor, lastClosed }
-  }, [rows, complaints])
+  const opts = cat === 'truck'
+    ? refs.trucks.map(t => ({ value: t.id, label: t.plate, sub: t.code, search: t.code }))
+    : cat === 'mechanic'
+      ? refs.mechanics.map(m => ({ value: m.id, label: m.nickname ? `${title(m.name)} (${m.nickname})` : title(m.name), sub: m.code, search: m.nickname || '' }))
+      : cat === 'driver'
+        ? refs.drivers.map(d => ({ value: d.id, label: d.nickname ? `${title(d.name)} (${d.nickname})` : title(d.name), sub: d.code, search: d.nickname || '' }))
+        : []
 
   return (
     <>
       <div className="controls">
-        <div className="field grow">
-          <label>Truck</label>
-          <SearchSelect
-            value={truckId} onChange={setTruckId}
-            placeholder="Search truck by plate or code…"
-            options={trucks.map(t => ({
-              value: t.id,
-              label: t.plate,
-              sub: t.code + (t.status !== 'Active' ? ` · ${t.status}` : ''),
-              search: `${t.code} ${t.fleet_division || ''} ${t.status}`,
-            }))}
-          />
+        <div className="seg-lens">
+          {CATS.map(([v, l]) => (
+            <button key={v} className={cat === v ? 'on' : ''} onClick={() => { setCat(v); setEntityId('') }}>{l}</button>
+          ))}
         </div>
+        {cat !== 'all' && (
+          <div className="field grow" style={{ maxWidth: 300 }}>
+            <SearchSelect value={entityId} onChange={setEntityId} placeholder={`Pick a ${cat}...`} options={opts} />
+          </div>
+        )}
+        <div className="field"><label>From</label><input type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
+        <div className="field"><label>To</label><input type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
       </div>
 
-      {!truckId ? (
-        <Empty title="Pick a truck">Its full repair history — every complaint and work order — shows here.</Empty>
-      ) : loading ? <Spinner label="Loading service record…" /> : complaints.length === 0 ? (
-        <Empty title="No history yet">This truck has never had a complaint filed.</Empty>
+      {cat !== 'all' && !entityId ? (
+        <Empty title={`Pick a ${cat}`}>Choose one to see its complaints and work orders in the date range.</Empty>
+      ) : loading ? <Spinner label="Loading..." /> : rows.length === 0 ? (
+        <Empty title="Nothing in this range">Try a wider date range or a different filter.</Empty>
       ) : (
         <>
-          <div className="metrics">
-            <div className="metric"><div className="k">Complaints</div><div className="v">{stats.complaints}</div></div>
-            <div className="metric"><div className="k">Total labor</div><div className="v">{fmtDuration(stats.totalLabor)}</div></div>
-            <div className="metric"><div className="k">Last closed</div><div className="v" style={{ fontSize: 16 }}>{stats.lastClosed ? fmtDateShort(stats.lastClosed) : '—'}</div></div>
-          </div>
-
-          {complaints.map(c => (
-            <div className="hist-group" key={c.id}>
-              <div className="hist-head">
-                <span className="title">{c.desc}</span>
-                <div className="right">
-                  <Badge tone={c.status === 'done' ? 'ok' : 'warn'}>{c.status === 'done' ? 'Closed' : 'Open'}</Badge>
-                  <span className="model">{c.code} · {fmtDate(c.reported_at)}</span>
+          <div className="hist-count">{rows.length} complaint{rows.length === 1 ? '' : 's'}</div>
+          <div className="clist">
+            {rows.map(c => {
+              const wos = c.work_orders || []
+              const who = title(c.driver?.name || c.mechanic?.name || c.reporter_name || 'No reporter')
+              const isOpen = expanded === c.id
+              return (
+                <div className={'crow' + (isOpen ? ' open' : '')} key={c.id}>
+                  <div className="crow-head" onClick={() => setExpanded(isOpen ? null : c.id)}>
+                    <Plate lg>{c.truck?.plate}</Plate>
+                    <div className="crow-desc">
+                      <div className="d">{c.description}</div>
+                      {c.resolution && <div className="resolved">\u2192 Resolved: {c.resolution}</div>}
+                      <div className="m">{c.code} \u00b7 {who} \u00b7 {fmtDate(c.reported_at)}</div>
+                    </div>
+                    <div className="crow-meta">
+                      {c.priority === 'urgent' && <Badge tone="urgent">Urgent</Badge>}
+                      <Badge tone={c.status === 'done' ? 'ok' : 'warn'}>{c.status === 'done' ? 'Done' : 'Open'}</Badge>
+                      <span className="crow-wocount">{wos.length} WO</span>
+                    </div>
+                    <span className="crow-caret">{'\u25b6'}</span>
+                  </div>
+                  {isOpen && (
+                    <div className="crow-detail">
+                      {wos.length === 0
+                        ? <div style={{ fontSize: 13, color: 'var(--muted)' }}>No work orders.</div>
+                        : wos.map(w => {
+                          const st = WO_STATUS[w.status] || {}
+                          const who2 = w.mechanic?.name ? title(w.mechanic.name) : (w.external_assignee ? `${w.external_assignee} (external)` : (w.vendor?.name ? `\u2192 ${w.vendor.name}` : 'Unassigned'))
+                          return (
+                            <div className="wo-row" key={w.id}>
+                              <div className="l">
+                                <div className="who" style={{ fontWeight: 600 }}>{w.description || w.specialty?.label || 'Work order'}</div>
+                                <div className="code">{who2} \u00b7 {w.specialty?.label || '\u2014'} \u00b7 {w.code}</div>
+                              </div>
+                              <Badge tone={st.tone}>{st.label}</Badge>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="hist-body">
-                {c.wos.length === 0
-                  ? <div style={{ fontSize: 13, color: 'var(--muted)', padding: '8px 0' }}>No work orders logged.</div>
-                  : c.wos.map(w => {
-                    const st = WO_STATUS[w.wo_status] || WO_STATUS.done
-                    return (
-                      <div className="wo-row" key={w.work_order_id}>
-                        <div className="l">
-                          <div className="who" style={{ fontWeight: 600 }}>{woTitle(w)}</div>
-                          <div className="code">
-                            {w.is_outsourced ? `→ ${w.vendor_name || 'vendor'}` : (w.mechanic_name || 'Unassigned')}
-                            {w.specialty ? ` · ${w.specialty}` : ''} · {w.wo_code}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          {!w.is_outsourced && <span className="timer static">{fmtDuration(w.labor_seconds)}</span>}
-                          <Badge tone={st.tone}>{st.label}</Badge>
-                        </div>
-                      </div>
-                    )
-                  })}
-              </div>
-            </div>
-          ))}
+              )
+            })}
+          </div>
         </>
       )}
     </>
   )
 }
 
-/* ---------------- Mechanic work log ---------------- */
-function MechanicLens() {
-  const [mechanics, setMechanics] = useState([])
-  const [mechanicId, setMechanicId] = useState('')
-  const [from, setFrom] = useState(daysAgo(30))
+/* ---------------- Logs: daily event feed ---------------- */
+function Logs() {
+  const [from, setFrom] = useState(daysAgo(7))
   const [to, setTo] = useState(today())
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (!isConfigured) return
-    supabase.from('mechanics').select('id,code,name,nickname,status').order('code')
-      .then(({ data }) => setMechanics(data || []))
-  }, [])
-
-  useEffect(() => {
-    if (!mechanicId) { setRows([]); return }
     setLoading(true)
-    supabase.from('mechanic_work_log').select('*')
-      .eq('mechanic_id', mechanicId).gte('work_date', from).lte('work_date', to)
-      .order('started_at', { ascending: false })
+    supabase.from('daily_shop_log').select('*')
+      .gte('event_date', from).lte('event_date', to)
+      .order('event_at', { ascending: false })
       .then(({ data }) => { setRows(data || []); setLoading(false) })
-  }, [mechanicId, from, to])
+  }, [from, to])
 
-  const days = useMemo(() => {
-    const map = new Map()
-    for (const r of rows) {
-      if (!map.has(r.work_date)) map.set(r.work_date, { date: r.work_date, sessions: [], total: 0 })
-      const g = map.get(r.work_date)
-      g.sessions.push(r); g.total += r.session_seconds || 0
+  const byDay = useMemo(() => {
+    const m = new Map()
+    for (const e of rows) {
+      if (!m.has(e.event_date)) m.set(e.event_date, [])
+      m.get(e.event_date).push(e)
     }
-    return [...map.values()]
+    return [...m.entries()]
   }, [rows])
-
-  const stats = useMemo(() => {
-    const totalLabor = rows.reduce((a, r) => a + (r.session_seconds || 0), 0)
-    const jobs = new Set(rows.map(r => r.work_order_id)).size
-    return { totalLabor, jobs, days: days.length }
-  }, [rows, days])
 
   return (
     <>
       <div className="controls">
-        <div className="field grow">
-          <label>Mechanic</label>
-          <SearchSelect
-            value={mechanicId} onChange={setMechanicId}
-            placeholder="Search mechanic by name or nickname…"
-            options={mechanics.map(m => ({
-              value: m.id,
-              label: m.nickname ? `${title(m.name)} (${m.nickname})` : title(m.name),
-              sub: m.code + (m.status !== 'Active' ? ` · ${m.status}` : ''),
-              search: `${m.code} ${m.nickname || ''} ${m.status}`,
-            }))}
-          />
-        </div>
         <div className="field"><label>From</label><input type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
         <div className="field"><label>To</label><input type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
       </div>
-
-      {!mechanicId ? (
-        <Empty title="Pick a mechanic">Their assignment trail — which jobs they were put on and when — shows here.</Empty>
-      ) : loading ? <Spinner label="Loading trail…" /> : days.length === 0 ? (
-        <Empty title="No assignments in this range">Try a wider date range.</Empty>
-      ) : (
-        <>
-          <div className="metrics">
-            <div className="metric"><div className="k">Time on jobs (approx)</div><div className="v">{fmtDuration(stats.totalLabor)}</div></div>
-            <div className="metric"><div className="k">Jobs touched</div><div className="v">{stats.jobs}</div></div>
-            <div className="metric"><div className="k">Days active</div><div className="v">{stats.days}</div></div>
-          </div>
-
-          {days.map(d => (
-            <div className="hist-group" key={d.date}>
-              <div className="hist-head">
-                <span className="title">{fmtDayLabel(d.date)}</span>
-                <div className="right">
-                  <span className="timer static">~{fmtDuration(d.total)}</span>
-                  <span className="model">{d.sessions.length} assignment{d.sessions.length === 1 ? '' : 's'}</span>
-                </div>
-              </div>
-              <div className="hist-body">
-                {d.sessions.map(s => (
-                  <div className="wo-row" key={s.session_id}>
-                    <div className="l">
-                      <div className="who" style={{ fontWeight: 600 }}>{woTitle(s)}</div>
-                      <div className="code">
-                        <Plate>{s.plate}</Plate>{s.specialty ? ` · ${s.specialty}` : ''} · {s.wo_code}
-                        {' · '}assigned {fmtClock(s.started_at)}
-                        {s.running ? ', ongoing' : `, moved off ${fmtClock(s.ended_at)}`}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span className={'timer' + (s.running ? '' : ' static')}>
-                        {s.running ? `~${fmtDuration(s.session_seconds)} so far` : `spanned ${fmtDuration(s.session_seconds)}`}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </>
-      )}
-    </>
-  )
-}
-
-/* ---------------- Daily shop log ---------------- */
-function DayLens() {
-  const [date, setDate] = useState(today())
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (!isConfigured) return
-    setLoading(true)
-    supabase.from('daily_shop_log').select('*').eq('event_date', date)
-      .order('event_at', { ascending: true })
-      .then(({ data }) => { setRows(data || []); setLoading(false) })
-  }, [date])
-
-  return (
-    <>
-      <div className="controls">
-        <div className="field"><label>Date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
-      </div>
-
-      {loading ? <Spinner label="Loading day…" /> : rows.length === 0 ? (
-        <Empty title="Nothing logged on this day">Pick another date, or check the shop board for today's live work.</Empty>
-      ) : (
-        <div className="hist-group">
+      {loading ? <Spinner label="Loading log..." /> : byDay.length === 0 ? (
+        <Empty title="Nothing logged">No events in this range \u2014 opens, completions, vendor sends, and closes show here.</Empty>
+      ) : byDay.map(([date, events]) => (
+        <div className="hist-group" key={date}>
           <div className="hist-head"><span className="title">{fmtDayLabel(date)}</span>
-            <div className="right"><span className="model">{rows.length} event{rows.length === 1 ? '' : 's'}</span></div>
+            <div className="right"><span className="model">{events.length} event{events.length === 1 ? '' : 's'}</span></div>
           </div>
           <div className="hist-body">
-            {rows.map((e, i) => {
+            {events.map((e, i) => {
               const et = EVENT_TYPES[e.event_type] || { label: e.event_type, tone: 'muted' }
               return (
                 <div className="event-row" key={i}>
@@ -286,19 +201,19 @@ function DayLens() {
                   <Badge tone={et.tone}>{et.label}</Badge>
                   <span className="txt">
                     <Plate>{e.plate}</Plate> <span style={{ color: 'var(--text-2)', marginLeft: 6 }}>{e.ref_code}</span>
-                    {e.actor && <span className="actor"> · {title(e.actor)}</span>}
+                    {e.actor && <span className="actor"> \u00b7 {title(e.actor)}</span>}
                   </span>
                 </div>
               )
             })}
           </div>
         </div>
-      )}
+      ))}
     </>
   )
 }
 
-/* ---------------- helpers ---------------- */
+/* helpers */
 function today() { return new Date().toISOString().slice(0, 10) }
 function daysAgo(n) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10) }
 function title(s) { return (s || '').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) }
@@ -307,6 +222,6 @@ function fmtDayLabel(dateStr) {
   return d.toLocaleDateString(undefined, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
 }
 function fmtClock(iso) {
-  if (!iso) return '—'
+  if (!iso) return '\u2014'
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }

@@ -267,6 +267,7 @@ textarea { resize: vertical; min-height: 72px; }
 .metric { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 18px; min-width: 130px; }
 .metric .k { font-size: 12px; color: var(--muted); }
 .metric .v { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin-top: 3px; letter-spacing: -.01em; }
+.hist-count { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 
 .hist-group { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 14px; overflow: hidden; }
 .hist-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line-2); background: #FAFBFC; }
