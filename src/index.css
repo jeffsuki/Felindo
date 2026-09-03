@@ -372,6 +372,10 @@ textarea { resize: vertical; min-height: 72px; }
 .mm-section-head h3 { font-family: var(--font-display); font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); margin: 0; }
 .mm-section-head h3.mech { font-size: 16px; text-transform: none; letter-spacing: -.01em; color: var(--text); }
 .mm-section-head .cd { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.board2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+.mm-col { min-width: 0; }
+.mm-col-title { font-family: var(--font-display); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 10px; }
+@media (max-width: 900px) { .board2 { grid-template-columns: 1fr; } }
 .unassign-x { border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 4px; }
 .unassign-x:hover { color: var(--urgent); background: var(--urgent-wash); }
 

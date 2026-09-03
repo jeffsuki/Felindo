@@ -81,60 +81,68 @@ export default function Queue() {
         </div>
         <button className="btn ghost" onClick={load}>Refresh</button>
       </div>
-      <div className="content" style={{ maxWidth: 860 }}>
+      <div className="content" style={{ maxWidth: 1180 }}>
+        <div className="board2">
 
-        {/* Unassigned pool */}
-        <div className="mm-section">
-          <div className="mm-section-head">
-            <h3>Unassigned</h3><span className="crow-wocount">{unassigned.length}</span>
-          </div>
-          {unassigned.length === 0 ? (
-            <div className="pool-hint" style={{ padding: '8px 2px' }}>Nothing waiting to assign.</div>
-          ) : unassignedGroups.map(([plate, items]) => {
-            const open = openGroups.has(plate)
-            return (
-              <div className="pool-group" key={plate}>
-                <div className="pool-group-head clickable" onClick={() => toggleGroup(plate)}>
-                  <span className="pg-caret">{open ? '\u25be' : '\u25b8'}</span>
-                  <span className="pg-key">{plate}</span>
-                  <span className="pg-count">{items.length}</span>
-                </div>
-                {open && items.map(w => (
-                  <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />
-                ))}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* One section per mechanic */}
-        {mechanics.map(m => {
-          const jobs = byMech.get(m.id) || []
-          const active = jobs.filter(j => j.status === 'in_progress').length
-          return (
-            <div className="mm-section" key={m.id}>
+          {/* LEFT: unassigned work, grouped by truck */}
+          <div className="mm-col">
+            <div className="mm-col-title">Trucks — unassigned work</div>
+            <div className="mm-section">
               <div className="mm-section-head">
-                <h3 className="mech">{title(m.name)}{m.nickname ? ` (${m.nickname})` : ''}</h3>
-                <span className="cd">{m.code}</span>
-                {m.can_lift && <Badge tone="accent">Lifts</Badge>}
-                <span className="crow-wocount" style={{ marginLeft: 'auto' }}>
-                  {jobs.length === 0 ? 'free' : `${jobs.length} job${jobs.length === 1 ? '' : 's'}${active ? ` \u00b7 ${active} working` : ''}`}
-                </span>
+                <h3>Unassigned</h3><span className="crow-wocount">{unassigned.length}</span>
               </div>
-              {jobs.length === 0
-                ? <div className="mcard-idle" style={{ padding: '6px 2px' }}>Nothing assigned</div>
-                : jobs.map(w => <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />)}
+              {unassigned.length === 0 ? (
+                <div className="pool-hint" style={{ padding: '8px 2px' }}>Nothing waiting to assign.</div>
+              ) : unassignedGroups.map(([plate, items]) => {
+                const open = openGroups.has(plate)
+                return (
+                  <div className="pool-group" key={plate}>
+                    <div className="pool-group-head clickable" onClick={() => toggleGroup(plate)}>
+                      <span className="pg-caret">{open ? '\u25be' : '\u25b8'}</span>
+                      <span className="pg-key">{plate}</span>
+                      <span className="pg-count">{items.length}</span>
+                    </div>
+                    {open && items.map(w => (
+                      <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />
+                    ))}
+                  </div>
+                )
+              })}
             </div>
-          )
-        })}
-
-        {/* External / driver assignees */}
-        {others.length > 0 && (
-          <div className="mm-section">
-            <div className="mm-section-head"><h3>Others (drivers / external)</h3><span className="crow-wocount">{others.length}</span></div>
-            {others.map(w => <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />)}
           </div>
-        )}
+
+          {/* RIGHT: one section per mechanic */}
+          <div className="mm-col">
+            <div className="mm-col-title">Mechanics — current queue</div>
+            {mechanics.map(m => {
+              const jobs = byMech.get(m.id) || []
+              const active = jobs.filter(j => j.status === 'in_progress').length
+              return (
+                <div className="mm-section" key={m.id}>
+                  <div className="mm-section-head">
+                    <h3 className="mech">{title(m.name)}{m.nickname ? ` (${m.nickname})` : ''}</h3>
+                    <span className="cd">{m.code}</span>
+                    {m.can_lift && <Badge tone="accent">Lifts</Badge>}
+                    <span className="crow-wocount" style={{ marginLeft: 'auto' }}>
+                      {jobs.length === 0 ? 'free' : `${jobs.length} job${jobs.length === 1 ? '' : 's'}${active ? ` \u00b7 ${active} working` : ''}`}
+                    </span>
+                  </div>
+                  {jobs.length === 0
+                    ? <div className="mcard-idle" style={{ padding: '6px 2px' }}>Nothing assigned</div>
+                    : jobs.map(w => <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />)}
+                </div>
+              )
+            })}
+
+            {others.length > 0 && (
+              <div className="mm-section">
+                <div className="mm-section-head"><h3>Others (drivers / external)</h3><span className="crow-wocount">{others.length}</span></div>
+                {others.map(w => <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />)}
+              </div>
+            )}
+          </div>
+
+        </div>
       </div>
       {node}
     </>
