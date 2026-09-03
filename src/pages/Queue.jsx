@@ -4,9 +4,10 @@ import { Plate, Badge, Spinner, Empty, useToast } from '../components/ui'
 import SearchSelect from '../components/SearchSelect'
 import { WO_STATUS, woTitle } from '../lib/format'
 
-// Single-column, work-order-focused board: jobs grouped by truck (collapsible),
-// urgent trucks first. Assign via a mechanic dropdown; Start/Stop, Waiting
-// (with a typed reason), Outsource, and Unassign inline on each row.
+// Single column: an Unassigned pool (grouped by truck, collapsible) at the top,
+// then one section per mechanic showing that mechanic's queue stacked in one
+// column. Assign via the per-job mechanic dropdown; Start/Stop, Waiting,
+// Outsource, Unassign inline on each job.
 export default function Queue() {
   const { show, node } = useToast()
   const [rows, setRows] = useState([])
@@ -22,7 +23,7 @@ export default function Queue() {
       supabase.from('work_orders')
         .select('id,code,description,status,waiting_reason,external_assignee,assigned_mechanic_id,specialty:specialties(label),complaint:complaints!inner(id,priority,status,truck:trucks(plate,code))')
         .eq('is_outsourced', false).eq('voided', false).neq('status', 'done'),
-      supabase.from('mechanics').select('id,code,name,nickname').eq('status', 'Active').eq('employment_type', 'in_house').order('code'),
+      supabase.from('mechanics').select('id,code,name,nickname,can_lift').eq('status', 'Active').eq('employment_type', 'in_house').order('code'),
       supabase.from('vendors').select('id,name').eq('status', 'Active').order('name'),
     ])
     const open = (wo.data || []).filter(w => ['open', 'in_progress'].includes(w.complaint?.status))
@@ -33,25 +34,30 @@ export default function Queue() {
   }
   useEffect(() => { load() }, [])
 
-  // group by truck plate; urgent trucks (any urgent complaint) first
-  const groups = useMemo(() => {
+  const unassigned = useMemo(() => rows.filter(w => !w.assigned_mechanic_id && !w.external_assignee), [rows])
+  const others = useMemo(() => rows.filter(w => !w.assigned_mechanic_id && w.external_assignee), [rows])
+  const byMech = useMemo(() => {
     const m = new Map()
     for (const w of rows) {
-      const key = w.complaint?.truck?.plate || '\u2014'
-      if (!m.has(key)) m.set(key, { plate: key, code: w.complaint?.truck?.code, urgent: false, items: [] })
-      const g = m.get(key)
-      g.items.push(w)
-      if (w.complaint?.priority === 'urgent') g.urgent = true
+      if (!w.assigned_mechanic_id) continue
+      if (!m.has(w.assigned_mechanic_id)) m.set(w.assigned_mechanic_id, [])
+      m.get(w.assigned_mechanic_id).push(w)
     }
-    return [...m.values()].sort((a, b) => {
-      if (a.urgent !== b.urgent) return a.urgent ? -1 : 1
-      return a.plate.localeCompare(b.plate)
-    })
+    return m
   }, [rows])
 
-  function toggleGroup(key) {
-    setOpenGroups(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
-  }
+  // unassigned grouped by truck (collapsible)
+  const unassignedGroups = useMemo(() => {
+    const m = new Map()
+    for (const w of unassigned) {
+      const key = w.complaint?.truck?.plate || '\u2014'
+      if (!m.has(key)) m.set(key, [])
+      m.get(key).push(w)
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [unassigned])
+
+  function toggleGroup(k) { setOpenGroups(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n }) }
   async function patch(id, p, msg) {
     const { error } = await supabase.from('work_orders').update(p).eq('id', id)
     if (error) return show(cleanErr(error.message), true)
@@ -71,40 +77,62 @@ export default function Queue() {
       <div className="topbar">
         <div>
           <h1>Mechanic Management</h1>
-          <div className="sub">Active work by truck, urgent first \u2014 assign a mechanic and drive each job</div>
+          <div className="sub">Each mechanic's queue \u2014 assign from the unassigned pool and drive each job</div>
         </div>
         <button className="btn ghost" onClick={load}>Refresh</button>
       </div>
-      <div className="content" style={{ maxWidth: 820 }}>
-        {groups.length === 0 ? (
-          <Empty title="No active work">Nothing to manage right now. Work orders show up here once complaints are sorted.</Empty>
-        ) : (
-          <div className="clist">
-            {groups.map(g => {
-              const open = openGroups.has(g.plate)
-              const active = g.items.filter(w => w.status === 'in_progress').length
-              return (
-                <div className={'crow' + (open ? ' open' : '')} key={g.plate}>
-                  <div className="crow-head" onClick={() => toggleGroup(g.plate)}>
-                    <span className="crow-caret">{'\u25b6'}</span>
-                    <Plate lg>{g.plate}</Plate>
-                    <div className="crow-desc"><div className="m">{g.code || ''}</div></div>
-                    <div className="crow-meta">
-                      {g.urgent && <Badge tone="urgent">Urgent</Badge>}
-                      {active > 0 && <Badge tone="warn">{active} working</Badge>}
-                      <span className="crow-wocount">{g.items.length} job{g.items.length === 1 ? '' : 's'}</span>
-                    </div>
-                  </div>
-                  {open && (
-                    <div className="crow-detail">
-                      {g.items.map(w => (
-                        <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} />
-                      ))}
-                    </div>
-                  )}
+      <div className="content" style={{ maxWidth: 860 }}>
+
+        {/* Unassigned pool */}
+        <div className="mm-section">
+          <div className="mm-section-head">
+            <h3>Unassigned</h3><span className="crow-wocount">{unassigned.length}</span>
+          </div>
+          {unassigned.length === 0 ? (
+            <div className="pool-hint" style={{ padding: '8px 2px' }}>Nothing waiting to assign.</div>
+          ) : unassignedGroups.map(([plate, items]) => {
+            const open = openGroups.has(plate)
+            return (
+              <div className="pool-group" key={plate}>
+                <div className="pool-group-head clickable" onClick={() => toggleGroup(plate)}>
+                  <span className="pg-caret">{open ? '\u25be' : '\u25b8'}</span>
+                  <span className="pg-key">{plate}</span>
+                  <span className="pg-count">{items.length}</span>
                 </div>
-              )
-            })}
+                {open && items.map(w => (
+                  <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />
+                ))}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* One section per mechanic */}
+        {mechanics.map(m => {
+          const jobs = byMech.get(m.id) || []
+          const active = jobs.filter(j => j.status === 'in_progress').length
+          return (
+            <div className="mm-section" key={m.id}>
+              <div className="mm-section-head">
+                <h3 className="mech">{title(m.name)}{m.nickname ? ` (${m.nickname})` : ''}</h3>
+                <span className="cd">{m.code}</span>
+                {m.can_lift && <Badge tone="accent">Lifts</Badge>}
+                <span className="crow-wocount" style={{ marginLeft: 'auto' }}>
+                  {jobs.length === 0 ? 'free' : `${jobs.length} job${jobs.length === 1 ? '' : 's'}${active ? ` \u00b7 ${active} working` : ''}`}
+                </span>
+              </div>
+              {jobs.length === 0
+                ? <div className="mcard-idle" style={{ padding: '6px 2px' }}>Nothing assigned</div>
+                : jobs.map(w => <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />)}
+            </div>
+          )
+        })}
+
+        {/* External / driver assignees */}
+        {others.length > 0 && (
+          <div className="mm-section">
+            <div className="mm-section-head"><h3>Others (drivers / external)</h3><span className="crow-wocount">{others.length}</span></div>
+            {others.map(w => <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />)}
           </div>
         )}
       </div>
@@ -113,7 +141,7 @@ export default function Queue() {
   )
 }
 
-function WorkRow({ w, mechanics, vendors, onPatch }) {
+function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
   const st = WO_STATUS[w.status] || {}
   const [waitMode, setWaitMode] = useState(false)
   const [waitReason, setWaitReason] = useState('')
@@ -145,6 +173,7 @@ function WorkRow({ w, mechanics, vendors, onPatch }) {
         <div className="mm-l">
           <div className="who" style={{ fontWeight: 600 }}>{woTitle(w)}</div>
           <div className="code">
+            {showTruck && <><Plate>{w.complaint?.truck?.plate}</Plate> · </>}
             {w.specialty?.label || '\u2014'} · {w.code}
             {w.status === 'paused' && w.waiting_reason && <span style={{ color: '#7A5AA6' }}> · waiting: {w.waiting_reason}</span>}
           </div>
@@ -164,15 +193,11 @@ function WorkRow({ w, mechanics, vendors, onPatch }) {
 
         {inProgress
           ? <button className="btn ghost sm" onClick={() => onPatch(w.id, { status: 'paused', waiting_reason: null }, 'Stopped.')}>Stop</button>
-          : <button className="btn primary sm" disabled={!hasWorker}
-              title={hasWorker ? '' : 'Assign a mechanic first'}
+          : <button className="btn primary sm" disabled={!hasWorker} title={hasWorker ? '' : 'Assign a mechanic first'}
               onClick={() => onPatch(w.id, { status: 'in_progress' }, 'Started.')}>Start</button>}
 
         {!waitMode && <button className="btn ghost sm" onClick={() => { setWaitMode(true); setOutMode(false) }}>Waiting…</button>}
         {!outMode && <button className="btn ghost sm" onClick={() => { setOutMode(true); setWaitMode(false) }}>Outsource…</button>}
-        {w.status !== 'unassigned' && (
-          <button className="btn ghost sm" onClick={() => onPatch(w.id, { assigned_mechanic_id: null, external_assignee: null, status: 'unassigned', waiting_reason: null, helper_note: null }, 'Unassigned.')}>Unassign</button>
-        )}
       </div>
 
       {waitMode && (

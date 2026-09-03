@@ -367,6 +367,11 @@ textarea { resize: vertical; min-height: 72px; }
 .mm-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
 .mm-mech { width: auto; min-width: 150px; padding: 6px 9px; font-size: 13px; }
 .mm-panel { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 8px; background: #F7F9FA; border: 1px solid var(--line-2); border-radius: 6px; padding: 8px; }
+.mm-section { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 16px; margin-bottom: 14px; }
+.mm-section-head { display: flex; align-items: center; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line-2); margin-bottom: 6px; }
+.mm-section-head h3 { font-family: var(--font-display); font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); margin: 0; }
+.mm-section-head h3.mech { font-size: 16px; text-transform: none; letter-spacing: -.01em; color: var(--text); }
+.mm-section-head .cd { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
 .unassign-x { border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 4px; }
 .unassign-x:hover { color: var(--urgent); background: var(--urgent-wash); }
 
