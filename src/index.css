@@ -357,6 +357,15 @@ textarea { resize: vertical; min-height: 72px; }
 .mjob-desc { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mjob-sub { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; margin-top: 1px; }
 .mjob-right { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+
+/* ---------- Mechanic Management single-column rows ---------- */
+.mm-row { padding: 12px 0; border-top: 1px dashed var(--line-2); }
+.mm-row:first-child { border-top: none; }
+.mm-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.mm-l { min-width: 0; }
+.mm-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.mm-mech { width: auto; min-width: 150px; padding: 6px 9px; font-size: 13px; }
+.mm-panel { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 8px; background: #F7F9FA; border: 1px solid var(--line-2); border-radius: 6px; padding: 8px; }
 .unassign-x { border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 4px; }
 .unassign-x:hover { color: var(--urgent); background: var(--urgent-wash); }
 
