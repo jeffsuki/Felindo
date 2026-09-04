@@ -25,7 +25,7 @@ export default function SearchSelect({ options, value, onChange, placeholder = '
 
   return (
     <div className="ss" ref={boxRef}>
-      <div className="ss-control" onClick={() => { setOpen(true); setQ('') }}>
+      <div className="ss-control" onClick={() => { if (!open) { setOpen(true); setQ('') } }}>
         {open ? (
           <input autoFocus className="ss-input" value={q} placeholder={placeholder}
             onChange={e => setQ(e.target.value)} />

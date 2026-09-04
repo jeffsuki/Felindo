@@ -9,17 +9,20 @@ export default function Triage() {
   const { show, node } = useToast()
   const [complaints, setComplaints] = useState([])
   const [refs, setRefs] = useState({ specialties: [], mechanics: [], vendors: [], drivers: [] })
+  const [cView, setCView] = useState('open')   // open | closed | all
   const [loading, setLoading] = useState(true)
 
   async function load() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
+    let cq = supabase.from('complaints')
+      .select('id,code,description,priority,duration_class,status,reported_at,reporter_name,truck:trucks(plate,fleet_division),driver:drivers(name),mechanic:mechanics(name),work_orders(id,code,status,description,helper_note,external_assignee,started_at,done_at,voided,is_outsourced,sent_date,expected_back_date,waiting_reason,required_specialty_id,assigned_mechanic_id,vendor_id,specialty:specialties(label,name),mechanic:mechanics(name,code),vendor:vendors(name))')
+      .eq('voided', false)
+      .order('reported_at', { ascending: true })
+    if (cView === 'open') cq = cq.in('status', ['open', 'in_progress'])
+    else if (cView === 'closed') cq = cq.eq('status', 'done')
     const [c, sp, me, ve, dr] = await Promise.all([
-      supabase.from('complaints')
-        .select('id,code,description,priority,duration_class,status,reported_at,reporter_name,truck:trucks(plate,fleet_division),driver:drivers(name),mechanic:mechanics(name),work_orders(id,code,status,description,helper_note,external_assignee,started_at,done_at,voided,is_outsourced,sent_date,expected_back_date,waiting_reason,required_specialty_id,assigned_mechanic_id,vendor_id,specialty:specialties(label,name),mechanic:mechanics(name,code),vendor:vendors(name))')
-        .eq('voided', false)
-        .in('status', ['open', 'in_progress'])
-        .order('reported_at', { ascending: true }),
+      cq,
       supabase.from('specialties').select('id,name,label,is_outsourced_default').order('code'),
       supabase.from('mechanics').select('id,code,name').eq('status', 'Active').eq('employment_type', 'in_house').order('code'),
       supabase.from('vendors').select('id,name').eq('status', 'Active').order('name'),
@@ -30,7 +33,7 @@ export default function Triage() {
     setRefs({ specialties: sp.data || [], mechanics: me.data || [], vendors: ve.data || [], drivers: dr.data || [] })
     setLoading(false)
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [cView])
 
   // ---- work-order mutations -------------------------------------------
   async function patchWO(id, patch, okMsg) {
@@ -52,6 +55,13 @@ export default function Triage() {
     show('Complaint closed.')
     load()
   }
+  async function reopenComplaint(id) {
+    const { error } = await supabase.from('complaints')
+      .update({ status: 'in_progress', closed_at: null }).eq('id', id)
+    if (error) return show(error.message, true)
+    show('Complaint reopened.')
+    load()
+  }
   async function setComplaintInProgress(id) {
     await supabase.from('complaints').update({ status: 'in_progress' }).eq('id', id)
   }
@@ -70,16 +80,26 @@ export default function Triage() {
           <h1>Sorting Work Orders</h1>
           <div className="sub">Break complaints into work orders, assign mechanics, or send to a vendor</div>
         </div>
-        <button className="btn ghost" onClick={load}>Refresh</button>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div className="seg-lens">
+            {[['open', 'Open'], ['closed', 'Closed'], ['all', 'All']].map(([v, l]) => (
+              <button key={v} className={cView === v ? 'on' : ''} onClick={() => setCView(v)}>{l}</button>
+            ))}
+          </div>
+          <button className="btn ghost" onClick={load}>Refresh</button>
+        </div>
       </div>
       <div className="content">
         {complaints.length === 0 ? (
-          <Empty title="No open complaints">Nothing to triage. New complaints show up here.</Empty>
+          <Empty title={cView === 'closed' ? 'No closed complaints' : 'No complaints'}>
+            {cView === 'open' ? 'Nothing to sort. New complaints show up here.' : 'Nothing in this view.'}
+          </Empty>
         ) : (
           <div className="clist">
             {complaints.map((c, i) => (
               <ComplaintCard key={c.id} c={c} refs={refs} defaultOpen={complaints.length <= 3 || i === 0}
                 onPatchWO={patchWO} onAddWO={addWO} onClose={closeComplaint}
+                onReopen={reopenComplaint}
                 onTouch={() => setComplaintInProgress(c.id)} />
             ))}
           </div>
@@ -90,13 +110,17 @@ export default function Triage() {
   )
 }
 
-function ComplaintCard({ c, refs, onPatchWO, onAddWO, onClose, onTouch, defaultOpen }) {
+function ComplaintCard({ c, refs, onPatchWO, onAddWO, onClose, onReopen, onTouch, defaultOpen }) {
   const [showAdd, setShowAdd] = useState(false)
   const [open, setOpen] = useState(!!defaultOpen)
+  const [woView, setWoView] = useState('all')   // all | queue | done
   const reporter = c.driver?.name || c.mechanic?.name || c.reporter_name || 'No reporter'
-  const wos = (c.work_orders || []).filter(w => !w.voided)
-  const allDone = wos.length > 0 && wos.every(w => w.status === 'done')
-  const activeCount = wos.filter(w => w.status !== 'done').length
+  const allWos = (c.work_orders || []).filter(w => !w.voided)
+  const allDone = allWos.length > 0 && allWos.every(w => w.status === 'done')
+  const activeCount = allWos.filter(w => w.status !== 'done').length
+  const isClosed = c.status === 'done'
+  const wos = allWos.filter(w =>
+    woView === 'all' ? true : woView === 'done' ? w.status === 'done' : w.status !== 'done')
 
   // Rediagnosis: close the task the mechanic reported back on, then open the
   // add-work-order drawer on this same complaint so the real fix can be logged.
@@ -114,9 +138,10 @@ function ComplaintCard({ c, refs, onPatchWO, onAddWO, onClose, onTouch, defaultO
           <div className="m">{c.code} · {title(reporter)} · {fmtDate(c.reported_at)}</div>
         </div>
         <div className="crow-meta">
+          {isClosed && <Badge tone="ok">Closed</Badge>}
           <Badge tone={PRIORITY[c.priority]?.tone}>{PRIORITY[c.priority]?.label}</Badge>
           <span className="crow-wocount">
-            {wos.length === 0 ? 'no WOs' : `${wos.length} WO · ${activeCount} open`}
+            {allWos.length === 0 ? 'no WOs' : `${allWos.length} WO · ${activeCount} open`}
           </span>
         </div>
         <span className="crow-caret">▶</span>
@@ -124,13 +149,23 @@ function ComplaintCard({ c, refs, onPatchWO, onAddWO, onClose, onTouch, defaultO
 
       {open && (
         <div className="crow-detail">
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
-            {DURATION[c.duration_class] || '—'} · {c.truck?.fleet_division}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>{DURATION[c.duration_class] || '—'} · {c.truck?.fleet_division}</span>
+            <div className="seg-lens" style={{ marginLeft: 'auto' }}>
+              {[['all', 'All'], ['queue', 'In queue'], ['done', 'Done']].map(([v, l]) => (
+                <button key={v} className={woView === v ? 'on' : ''} onClick={() => setWoView(v)}>{l}</button>
+              ))}
+            </div>
           </div>
 
-          {wos.length === 0 && (
+          {allWos.length === 0 && (
             <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 10 }}>
               No work orders yet. Add the first task below.
+            </div>
+          )}
+          {allWos.length > 0 && wos.length === 0 && (
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>
+              No {woView === 'done' ? 'done' : 'in-queue'} work orders.
             </div>
           )}
 
@@ -143,9 +178,9 @@ function ComplaintCard({ c, refs, onPatchWO, onAddWO, onClose, onTouch, defaultO
             <button className="btn ghost sm" onClick={() => setShowAdd(s => !s)}>
               {showAdd ? 'Cancel' : '+ Add work order'}
             </button>
-            {allDone && (
-              <button className="btn primary sm" onClick={() => onClose(c.id)}>Close complaint</button>
-            )}
+            {isClosed
+              ? <button className="btn ghost sm" onClick={() => onReopen(c.id)}>Reopen complaint</button>
+              : allDone && <button className="btn primary sm" onClick={() => onClose(c.id)}>Close complaint</button>}
           </div>
 
           {showAdd && (
