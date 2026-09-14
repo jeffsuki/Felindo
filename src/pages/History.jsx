@@ -37,6 +37,8 @@ function Archive() {
   const [from, setFrom] = useState(daysAgo(90))
   const [to, setTo] = useState(today())
   const [rows, setRows] = useState([])
+  const [mwos, setMwos] = useState([])          // mechanic's own work orders
+  const [mView, setMView] = useState('wo')      // 'wo' | 'truck'
   const [refs, setRefs] = useState({ trucks: [], mechanics: [], drivers: [] })
   const [loading, setLoading] = useState(false)
   const [expanded, setExpanded] = useState(null)
@@ -52,8 +54,26 @@ function Archive() {
 
   useEffect(() => {
     if (!isConfigured) return
-    if (cat !== 'all' && !entityId) { setRows([]); return }
+    if (cat !== 'all' && !entityId) { setRows([]); setMwos([]); return }
     setLoading(true)
+
+    // Mechanic view: query that mechanic's own work orders (per WO / per truck)
+    if (cat === 'mechanic') {
+      supabase.from('work_orders')
+        .select('id,code,description,status,started_at,done_at,is_outsourced,specialty:specialties(label),complaint:complaints!inner(id,code,reported_at,status,priority,voided,truck:trucks(plate,code))')
+        .eq('assigned_mechanic_id', entityId).eq('voided', false)
+        .then(({ data }) => {
+          const list = (data || []).filter(w => {
+            const c = w.complaint
+            if (!c || c.voided) return false
+            const d = c.reported_at
+            return d >= from + 'T00:00:00' && d <= to + 'T23:59:59'
+          }).sort((a, b) => (b.complaint?.reported_at || '').localeCompare(a.complaint?.reported_at || ''))
+          setMwos(list); setLoading(false)
+        })
+      return
+    }
+
     let query = supabase.from('complaints')
       .select('id,code,description,resolution,status,priority,reported_at,closed_at,reporter_name,reported_by_driver_id,truck:trucks(plate,code),driver:drivers(name),mechanic:mechanics(name),work_orders(id,code,status,description,external_assignee,assigned_mechanic_id,specialty:specialties(label),mechanic:mechanics(name),vendor:vendors(name))')
       .eq('voided', false)
@@ -62,14 +82,7 @@ function Archive() {
       .order('reported_at', { ascending: false })
     if (cat === 'truck') query = query.eq('truck_id', entityId)
     if (cat === 'driver') query = query.eq('reported_by_driver_id', entityId)
-    query.then(({ data }) => {
-      let list = data || []
-      if (cat === 'mechanic') {
-        list = list.filter(c => (c.work_orders || []).some(w => w.assigned_mechanic_id === entityId))
-      }
-      setRows(list)
-      setLoading(false)
-    })
+    query.then(({ data }) => { setRows(data || []); setLoading(false) })
   }, [cat, entityId, from, to])
 
   const opts = cat === 'truck'
@@ -99,6 +112,8 @@ function Archive() {
 
       {cat !== 'all' && !entityId ? (
         <Empty title={`Pick a ${cat}`}>Choose one to see its complaints and work orders in the date range.</Empty>
+      ) : cat === 'mechanic' ? (
+        <MechanicView mwos={mwos} loading={loading} mView={mView} setMView={setMView} />
       ) : loading ? <Spinner label="Loading..." /> : rows.length === 0 ? (
         <Empty title="Nothing in this range">Try a wider date range or a different filter.</Empty>
       ) : (
@@ -148,6 +163,66 @@ function Archive() {
               )
             })}
           </div>
+        </>
+      )}
+    </>
+  )
+}
+
+/* ---------------- Mechanic view: per WO / per truck ---------------- */
+function MechanicView({ mwos, loading, mView, setMView }) {
+  const byTruck = useMemo(() => {
+    const m = new Map()
+    for (const w of mwos) {
+      const key = w.complaint?.truck?.plate || '\u2014'
+      if (!m.has(key)) m.set(key, [])
+      m.get(key).push(w)
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [mwos])
+
+  function jobRow(w) {
+    const st = WO_STATUS[w.status] || {}
+    return (
+      <div className="wo-row" key={w.id}>
+        <div className="l">
+          <div className="who" style={{ fontWeight: 600 }}>{w.description || w.specialty?.label || 'Work order'}</div>
+          <div className="code">
+            <Plate>{w.complaint?.truck?.plate}</Plate> \u00b7 {w.specialty?.label || '\u2014'} \u00b7 {w.code} \u00b7 {fmtDate(w.complaint?.reported_at)}
+          </div>
+        </div>
+        <Badge tone={st.tone}>{st.label}</Badge>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="controls" style={{ marginBottom: 12 }}>
+        <div className="seg-lens">
+          {[['wo', 'Per work order'], ['truck', 'Per truck']].map(([v, l]) => (
+            <button key={v} className={mView === v ? 'on' : ''} onClick={() => setMView(v)}>{l}</button>
+          ))}
+        </div>
+      </div>
+      {loading ? <Spinner label="Loading..." /> : mwos.length === 0 ? (
+        <Empty title="Nothing in this range">This mechanic has no work orders in the date range.</Empty>
+      ) : mView === 'wo' ? (
+        <>
+          <div className="hist-count">{mwos.length} work order{mwos.length === 1 ? '' : 's'}</div>
+          <div className="mm-section">{mwos.map(jobRow)}</div>
+        </>
+      ) : (
+        <>
+          <div className="hist-count">{byTruck.length} truck{byTruck.length === 1 ? '' : 's'} \u00b7 {mwos.length} work order{mwos.length === 1 ? '' : 's'}</div>
+          {byTruck.map(([plate, items]) => (
+            <div className="mm-section" key={plate}>
+              <div className="mm-section-head"><h3 className="mech"><Plate lg>{plate}</Plate></h3>
+                <span className="crow-wocount" style={{ marginLeft: 'auto' }}>{items.length} job{items.length === 1 ? '' : 's'}</span>
+              </div>
+              {items.map(jobRow)}
+            </div>
+          ))}
         </>
       )}
     </>
