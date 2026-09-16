@@ -70,7 +70,7 @@ to provision.
 Open **SQL Editor** → **New query**, then run the migration files **in order**,
 each as its own query: `0001_init.sql`, `0002_history.sql`,
 `0003_master_editable.sql`, `0004_waiting_reason.sql`, `0005_wo_description.sql`,
-`0006_started_and_helper.sql`, `0007_pin_complaints.sql`, `0008_complaint_code_month.sql`, `0009_resolution.sql`, `0010_external_assignee.sql`, `0011_shopboard_external.sql`, `0012_wo_code_month.sql`, then `0013_void.sql`. Or with psql:
+`0006_started_and_helper.sql`, `0007_pin_complaints.sql`, `0008_complaint_code_month.sql`, `0009_resolution.sql`, `0010_external_assignee.sql`, `0011_shopboard_external.sql`, `0012_wo_code_month.sql`, `0013_void.sql`, then `0014_by_driver.sql`. Or with psql:
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0001_init.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0002_history.sql
@@ -85,12 +85,13 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0010_external_ass
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0011_shopboard_external.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0012_wo_code_month.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0013_void.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0014_by_driver.sql
 ```
 `0001` core; `0002` history; `0003` wide codes + nicknames; `0004` waiting
 reason; `0005` work-order descriptions in the views; `0006` editable start time
 + a "helped by" note. **Important ordering:** run the seed (step B3) *before*
 `0003`. If your database is already set up, run only the migrations you haven't
-applied yet (e.g. just `0013_void.sql`).
+applied yet (e.g. just `0014_by_driver.sql`).
 
 ### B3. Load the master data
 New query again. Open `supabase/seed.sql`, copy all of it, paste, **Run**. You

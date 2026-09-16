@@ -21,7 +21,7 @@ export default function Queue() {
     setLoading(true)
     const [wo, me, ve] = await Promise.all([
       supabase.from('work_orders')
-        .select('id,code,description,status,waiting_reason,external_assignee,assigned_mechanic_id,specialty:specialties(label),complaint:complaints!inner(id,priority,status,truck:trucks(plate,code))')
+        .select('id,code,description,status,waiting_reason,external_assignee,by_driver,assigned_mechanic_id,specialty:specialties(label),complaint:complaints!inner(id,priority,status,truck:trucks(plate,code))')
         .eq('is_outsourced', false).eq('voided', false).neq('status', 'done'),
       supabase.from('mechanics').select('id,code,name,nickname,can_lift').eq('status', 'Active').eq('employment_type', 'in_house').order('code'),
       supabase.from('vendors').select('id,name').eq('status', 'Active').order('name'),
@@ -34,8 +34,8 @@ export default function Queue() {
   }
   useEffect(() => { load() }, [])
 
-  const unassigned = useMemo(() => rows.filter(w => !w.assigned_mechanic_id && !w.external_assignee), [rows])
-  const others = useMemo(() => rows.filter(w => !w.assigned_mechanic_id && w.external_assignee), [rows])
+  const unassigned = useMemo(() => rows.filter(w => !w.assigned_mechanic_id && !w.external_assignee && !w.by_driver), [rows])
+  const others = useMemo(() => rows.filter(w => !w.assigned_mechanic_id && (w.external_assignee || w.by_driver)), [rows])
   const byMech = useMemo(() => {
     const m = new Map()
     for (const w of rows) {
@@ -188,6 +188,7 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
         </div>
         <Badge tone={st.tone}>{st.label}</Badge>
       </div>
+      {w.by_driver && <div style={{ marginTop: 4 }}><Badge tone="accent">Done by driver</Badge></div>}
       <div className="mm-actions">
         <select className="mm-mech" value={w.assigned_mechanic_id || ''}
           onChange={e => {

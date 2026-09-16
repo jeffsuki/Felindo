@@ -16,7 +16,7 @@ export default function Triage() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
     let cq = supabase.from('complaints')
-      .select('id,code,description,priority,duration_class,status,reported_at,reporter_name,truck:trucks(plate,fleet_division),driver:drivers(name),mechanic:mechanics(name),work_orders(id,code,status,description,helper_note,external_assignee,started_at,done_at,voided,is_outsourced,sent_date,expected_back_date,waiting_reason,required_specialty_id,assigned_mechanic_id,vendor_id,specialty:specialties(label,name),mechanic:mechanics(name,code),vendor:vendors(name))')
+      .select('id,code,description,priority,duration_class,status,reported_at,reporter_name,truck:trucks(plate,fleet_division),driver:drivers(name),mechanic:mechanics(name),work_orders(id,code,status,description,helper_note,external_assignee,by_driver,started_at,done_at,voided,is_outsourced,sent_date,expected_back_date,waiting_reason,required_specialty_id,assigned_mechanic_id,vendor_id,specialty:specialties(label,name),mechanic:mechanics(name,code),vendor:vendors(name))')
       .eq('voided', false)
       .order('reported_at', { ascending: true })
     if (cView === 'open') cq = cq.in('status', ['open', 'in_progress'])
@@ -210,6 +210,7 @@ function WorkOrderRow({ w, refs, onPatch, onTouch, onFollowUp }) {
   const [edSpec, setEdSpec] = useState('')
   const [edStart, setEdStart] = useState('')
   const [edDone, setEdDone] = useState('')
+  const [edByDriver, setEdByDriver] = useState(false)
 
   // Follow-up applies once a mechanic has engaged with the task and reported back
   const canFollowUp = ['in_progress', 'paused', 'awaiting_parts', 'done'].includes(w.status) && !w.is_outsourced
@@ -250,6 +251,7 @@ function WorkOrderRow({ w, refs, onPatch, onTouch, onFollowUp }) {
   function openEdit() {
     setEdDesc(w.description || ''); setEdSpec(w.required_specialty_id || '')
     setEdStart(toLocalInput(w.started_at)); setEdDone(toLocalInput(w.done_at))
+    setEdByDriver(!!w.by_driver)
     setEditMode(true)
   }
   function saveEdit() {
@@ -257,6 +259,7 @@ function WorkOrderRow({ w, refs, onPatch, onTouch, onFollowUp }) {
       description: edDesc.trim() || null,
       required_specialty_id: edSpec || null,
       started_at: fromLocalInput(edStart),
+      by_driver: edByDriver,
     }
     if (w.status === 'done') patch.done_at = fromLocalInput(edDone)
     onPatch(w.id, patch, 'Work order updated.')
@@ -336,6 +339,13 @@ function WorkOrderRow({ w, refs, onPatch, onTouch, onFollowUp }) {
               <label>Ended{w.status !== 'done' && <span className="hint">only saved once the job is done</span>}</label>
               <input type="datetime-local" value={edDone} onChange={e => setEdDone(e.target.value)} disabled={w.status !== 'done'} />
             </div>
+            <div className="field" style={{ margin: 0 }}>
+              <label>Done by driver<span className="hint">a driver did this job, not a mechanic</span></label>
+              <div className="seg">
+                <button type="button" className={edByDriver ? 'on' : ''} onClick={() => setEdByDriver(true)}>Yes</button>
+                <button type="button" className={!edByDriver ? 'on' : ''} onClick={() => setEdByDriver(false)}>No</button>
+              </div>
+            </div>
             <div className="btn-group">
               <button className="btn primary sm" onClick={saveEdit}>Save</button>
               <button className="btn ghost sm" onClick={() => setEditMode(false)}>Cancel</button>
@@ -352,6 +362,7 @@ function WorkOrderRow({ w, refs, onPatch, onTouch, onFollowUp }) {
         )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        {w.by_driver && <Badge tone="accent">Driver</Badge>}
         <Badge tone={st.tone}>{st.label}</Badge>
         <div className="btn-group">
           {actions.includes('assign') && (

@@ -60,7 +60,7 @@ function Archive() {
     // Mechanic view: query that mechanic's own work orders (per WO / per truck)
     if (cat === 'mechanic') {
       supabase.from('work_orders')
-        .select('id,code,description,status,started_at,done_at,is_outsourced,specialty:specialties(label),complaint:complaints!inner(id,code,reported_at,status,priority,voided,truck:trucks(plate,code))')
+        .select('id,code,description,status,started_at,done_at,is_outsourced,helper_note,by_driver,specialty:specialties(label),complaint:complaints!inner(id,code,reported_at,status,priority,voided,truck:trucks(plate,code))')
         .eq('assigned_mechanic_id', entityId).eq('voided', false)
         .then(({ data }) => {
           const list = (data || []).filter(w => {
@@ -75,7 +75,7 @@ function Archive() {
     }
 
     let query = supabase.from('complaints')
-      .select('id,code,description,resolution,status,priority,reported_at,closed_at,reporter_name,reported_by_driver_id,truck:trucks(plate,code),driver:drivers(name),mechanic:mechanics(name),work_orders(id,code,status,description,external_assignee,assigned_mechanic_id,specialty:specialties(label),mechanic:mechanics(name),vendor:vendors(name))')
+      .select('id,code,description,resolution,status,priority,reported_at,closed_at,reporter_name,reported_by_driver_id,truck:trucks(plate,code),driver:drivers(name),mechanic:mechanics(name),work_orders(id,code,status,description,helper_note,external_assignee,by_driver,assigned_mechanic_id,specialty:specialties(label),mechanic:mechanics(name),vendor:vendors(name))')
       .eq('voided', false)
       .gte('reported_at', from + 'T00:00:00')
       .lte('reported_at', to + 'T23:59:59')
@@ -151,9 +151,14 @@ function Archive() {
                             <div className="wo-row" key={w.id}>
                               <div className="l">
                                 <div className="who" style={{ fontWeight: 600 }}>{w.description || w.specialty?.label || 'Work order'}</div>
-                                <div className="code">{who2} \u00b7 {w.specialty?.label || '\u2014'} \u00b7 {w.code}</div>
+                                <div className="code">{who2} \u00b7 {w.specialty?.label || '\u2014'} \u00b7 {w.code}
+                                  {w.helper_note && <span className="helper-inline"> \u00b7 helped by {w.helper_note}</span>}
+                                </div>
                               </div>
-                              <Badge tone={st.tone}>{st.label}</Badge>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                {w.by_driver && <Badge tone="accent">Driver</Badge>}
+                                <Badge tone={st.tone}>{st.label}</Badge>
+                              </div>
                             </div>
                           )
                         })}
@@ -189,9 +194,13 @@ function MechanicView({ mwos, loading, mView, setMView }) {
           <div className="who" style={{ fontWeight: 600 }}>{w.description || w.specialty?.label || 'Work order'}</div>
           <div className="code">
             <Plate>{w.complaint?.truck?.plate}</Plate> \u00b7 {w.specialty?.label || '\u2014'} \u00b7 {w.code} \u00b7 {fmtDate(w.complaint?.reported_at)}
+            {w.helper_note && <span className="helper-inline"> \u00b7 helped by {w.helper_note}</span>}
           </div>
         </div>
-        <Badge tone={st.tone}>{st.label}</Badge>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {w.by_driver && <Badge tone="accent">Driver</Badge>}
+          <Badge tone={st.tone}>{st.label}</Badge>
+        </div>
       </div>
     )
   }
