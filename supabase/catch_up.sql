@@ -22,6 +22,7 @@ alter table work_orders  add column if not exists voided boolean not null defaul
 alter table complaints   add column if not exists pinned boolean not null default false;
 alter table complaints   add column if not exists resolution text;
 alter table complaints   add column if not exists voided boolean not null default false;
+alter table vendors      add column if not exists for_outsource boolean not null default true;
 
 -- backfill truck codes for any rows still missing one (T-00001…)
 with ordered as (select id, row_number() over (order by plate) as rn from trucks where code is null)

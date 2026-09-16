@@ -15,7 +15,19 @@ export default function Queue() {
   const [vendors, setVendors] = useState([])
   const [openGroups, setOpenGroups] = useState(new Set())
   const [vendorFilter, setVendorFilter] = useState('')
+  const [pinned, setPinned] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('trs_pinned_trucks') || '[]')) } catch { return new Set() }
+  })
   const [loading, setLoading] = useState(true)
+
+  function togglePin(plate) {
+    setPinned(s => {
+      const n = new Set(s)
+      n.has(plate) ? n.delete(plate) : n.add(plate)
+      try { localStorage.setItem('trs_pinned_trucks', JSON.stringify([...n])) } catch { /* ignore */ }
+      return n
+    })
+  }
 
   async function load() {
     if (!isConfigured) { setLoading(false); return }
@@ -25,7 +37,7 @@ export default function Queue() {
         .select('id,code,description,status,waiting_reason,external_assignee,by_driver,assigned_mechanic_id,is_outsourced,sent_date,expected_back_date,vendor:vendors(id,name),specialty:specialties(label),complaint:complaints!inner(id,priority,status,truck:trucks(plate,code))')
         .eq('voided', false).neq('status', 'done'),
       supabase.from('mechanics').select('id,code,name,nickname,can_lift').eq('status', 'Active').eq('employment_type', 'in_house').order('code'),
-      supabase.from('vendors').select('id,name').eq('status', 'Active').order('name'),
+      supabase.from('vendors').select('id,name').eq('status', 'Active').eq('for_outsource', true).order('name'),
     ])
     const open = (wo.data || []).filter(w => ['open', 'in_progress'].includes(w.complaint?.status))
     setRows(open)
@@ -70,8 +82,9 @@ export default function Queue() {
     }
     return s
   }, [rows])
-  const uaUnderRepair = useMemo(() => unassignedGroups.filter(([p]) => underRepairPlates.has(p)), [unassignedGroups, underRepairPlates])
-  const uaNotStarted = useMemo(() => unassignedGroups.filter(([p]) => !underRepairPlates.has(p)), [unassignedGroups, underRepairPlates])
+  const pinnedGroups = useMemo(() => unassignedGroups.filter(([p]) => pinned.has(p)), [unassignedGroups, pinned])
+  const uaUnderRepair = useMemo(() => unassignedGroups.filter(([p]) => !pinned.has(p) && underRepairPlates.has(p)), [unassignedGroups, underRepairPlates, pinned])
+  const uaNotStarted = useMemo(() => unassignedGroups.filter(([p]) => !pinned.has(p) && !underRepairPlates.has(p)), [unassignedGroups, underRepairPlates, pinned])
 
   function toggleGroup(k) { setOpenGroups(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n }) }
   async function patch(id, p, msg) {
@@ -107,12 +120,16 @@ export default function Queue() {
 
   const renderGroups = (groups) => groups.map(([plate, items]) => {
     const open = openGroups.has(plate)
+    const isPinned = pinned.has(plate)
     return (
       <div className="pool-group" key={plate}>
         <div className="pool-group-head clickable" onClick={() => toggleGroup(plate)}>
           <span className="pg-caret">{open ? '\u25be' : '\u25b8'}</span>
           <span className="pg-key">{plate}</span>
           <span className="pg-count">{items.length}</span>
+          <button className={'pin' + (isPinned ? ' on' : '')} style={{ marginLeft: 'auto', fontSize: 15 }}
+            title={isPinned ? 'Unpin' : 'Pin to top'}
+            onClick={e => { e.stopPropagation(); togglePin(plate) }}>{isPinned ? '\u2605' : '\u2606'}</button>
         </div>
         {open && items.map(w => (
           <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />
@@ -144,6 +161,12 @@ export default function Queue() {
                 <div className="pool-hint" style={{ padding: '8px 2px' }}>Nothing waiting to assign.</div>
               ) : (
                 <>
+                  {pinnedGroups.length > 0 && (
+                    <>
+                      <div className="mm-substatus">\u2605 Pinned · {pinnedGroups.length} truck{pinnedGroups.length === 1 ? '' : 's'}</div>
+                      {renderGroups(pinnedGroups)}
+                    </>
+                  )}
                   {uaUnderRepair.length > 0 && (
                     <>
                       <div className="mm-substatus">Undergoing repair · {uaUnderRepair.length} truck{uaUnderRepair.length === 1 ? '' : 's'}</div>

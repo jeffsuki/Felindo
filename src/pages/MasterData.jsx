@@ -53,16 +53,18 @@ const ENTITIES = {
   },
   vendors: {
     label: 'Vendors', table: 'vendors', order: 'code',
-    columns: 'id,code,name,contact,phone,status',
+    columns: 'id,code,name,contact,phone,for_outsource,status',
     statusSet: STATUS.vendor,
-    name: r => r.name, sub: r => [r.contact, r.phone].filter(Boolean).join(' · '),
+    name: r => r.name,
+    sub: r => [r.contact, r.phone, r.for_outsource ? 'outsource vendor' : 'parts / other'].filter(Boolean).join(' · '),
     search: r => `${r.code} ${r.name} ${r.contact || ''} ${r.phone || ''}`,
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true },
       { key: 'contact', label: 'Contact person', type: 'text' },
       { key: 'phone', label: 'Phone', type: 'text' },
+      { key: 'for_outsource', label: 'For outsourcing', type: 'bool', hint: 'appears when sending a job to a vendor' },
     ],
-    blank: { name: '', contact: '', phone: '', status: 'Active' },
+    blank: { name: '', contact: '', phone: '', for_outsource: true, status: 'Active' },
   },
 }
 

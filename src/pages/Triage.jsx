@@ -25,7 +25,7 @@ export default function Triage() {
       cq,
       supabase.from('specialties').select('id,name,label,is_outsourced_default').order('code'),
       supabase.from('mechanics').select('id,code,name').eq('status', 'Active').eq('employment_type', 'in_house').order('code'),
-      supabase.from('vendors').select('id,name').eq('status', 'Active').order('name'),
+      supabase.from('vendors').select('id,name').eq('status', 'Active').eq('for_outsource', true).order('name'),
       supabase.from('drivers').select('id,code,name,nickname').eq('status', 'Active').order('name'),
     ])
     if (c.error) show(c.error.message, true)

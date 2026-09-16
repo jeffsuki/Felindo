@@ -1,39 +1,53 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { isConfigured } from '../supabaseClient'
 
-const NAV = [
-  { to: '/', label: 'Shop board', end: true },
-  { to: '/complaints', label: 'Complaints' },
-  { to: '/triage', label: 'Sorting Work Orders' },
-  { to: '/queue', label: 'Mechanic Management' },
-  { to: '/floor', label: 'Floor' },
-  { to: '/history', label: 'History' },
-  { to: '/master', label: 'Master data' },
-]
+const NAVS = {
+  workshop: [
+    { to: '/workshop', label: 'Shop board', end: true },
+    { to: '/workshop/complaints', label: 'Complaints' },
+    { to: '/workshop/triage', label: 'Sorting Work Orders' },
+    { to: '/workshop/queue', label: 'Mechanic Management' },
+    { to: '/workshop/floor', label: 'Floor' },
+    { to: '/workshop/history', label: 'History' },
+  ],
+  fleet: [
+    { to: '/fleet', label: 'Fleet overview', end: true },
+  ],
+  warehouse: [
+    { to: '/warehouse', label: 'Warehouse', end: true },
+  ],
+  master: [
+    { to: '/master', label: 'Master data', end: true },
+  ],
+}
 
-export default function Layout({ children }) {
+export default function Layout({ section = 'workshop', children }) {
   const navigate = useNavigate()
+  const nav = NAVS[section] || NAVS.workshop
   return (
     <div className="app">
       <aside className="rail">
         <div className="brand">
-          <b>Bengkel</b><span>v1</span>
+          <b>Felindo</b><span>{section === 'fleet' ? 'Fleet' : section === 'warehouse' ? 'Warehouse' : section === 'master' ? 'Master' : 'Workshop'}</span>
         </div>
+        <NavLink to="/" className="rail-home">{'\u2190'} Home</NavLink>
         <nav className="nav">
-          {NAV.map(n => (
+          {nav.map(n => (
             <NavLink key={n.to} to={n.to} end={n.end}
               className={({ isActive }) => isActive ? 'active' : undefined}>
               <span className="dot" />{n.label}
             </NavLink>
           ))}
         </nav>
-        <div className="rail-cta">
-          <button className="btn on-dark" onClick={() => navigate('/complaints?new=1')}>
-            + New complaint
-          </button>
-        </div>
+        {section === 'workshop' && (
+          <div className="rail-cta">
+            <button className="btn on-dark" onClick={() => navigate('/workshop/complaints?new=1')}>
+              + New complaint
+            </button>
+          </div>
+        )}
         <div className="rail-foot">
-          Truck repair management.<br />Single-supervisor build.
+          {section === 'fleet' ? 'Fleet management.' : section === 'warehouse' ? 'Warehouse & spare parts.' : 'Truck repair management.'}<br />Single-supervisor build.
         </div>
       </aside>
       <main className="main">
