@@ -59,6 +59,20 @@ export default function Queue() {
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [unassigned])
 
+  // which trucks already have work underway (any non-unassigned work order)
+  const underRepairPlates = useMemo(() => {
+    const s = new Set()
+    for (const w of rows) {
+      if (w.status !== 'unassigned') {
+        const p = w.complaint?.truck?.plate
+        if (p) s.add(p)
+      }
+    }
+    return s
+  }, [rows])
+  const uaUnderRepair = useMemo(() => unassignedGroups.filter(([p]) => underRepairPlates.has(p)), [unassignedGroups, underRepairPlates])
+  const uaNotStarted = useMemo(() => unassignedGroups.filter(([p]) => !underRepairPlates.has(p)), [unassignedGroups, underRepairPlates])
+
   function toggleGroup(k) { setOpenGroups(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n }) }
   async function patch(id, p, msg) {
     const { error } = await supabase.from('work_orders').update(p).eq('id', id)
@@ -91,6 +105,22 @@ export default function Queue() {
     </>
   )
 
+  const renderGroups = (groups) => groups.map(([plate, items]) => {
+    const open = openGroups.has(plate)
+    return (
+      <div className="pool-group" key={plate}>
+        <div className="pool-group-head clickable" onClick={() => toggleGroup(plate)}>
+          <span className="pg-caret">{open ? '\u25be' : '\u25b8'}</span>
+          <span className="pg-key">{plate}</span>
+          <span className="pg-count">{items.length}</span>
+        </div>
+        {open && items.map(w => (
+          <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />
+        ))}
+      </div>
+    )
+  })
+
   return (
     <>
       <div className="topbar">
@@ -112,21 +142,22 @@ export default function Queue() {
               </div>
               {unassigned.length === 0 ? (
                 <div className="pool-hint" style={{ padding: '8px 2px' }}>Nothing waiting to assign.</div>
-              ) : unassignedGroups.map(([plate, items]) => {
-                const open = openGroups.has(plate)
-                return (
-                  <div className="pool-group" key={plate}>
-                    <div className="pool-group-head clickable" onClick={() => toggleGroup(plate)}>
-                      <span className="pg-caret">{open ? '\u25be' : '\u25b8'}</span>
-                      <span className="pg-key">{plate}</span>
-                      <span className="pg-count">{items.length}</span>
-                    </div>
-                    {open && items.map(w => (
-                      <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />
-                    ))}
-                  </div>
-                )
-              })}
+              ) : (
+                <>
+                  {uaUnderRepair.length > 0 && (
+                    <>
+                      <div className="mm-substatus">Undergoing repair · {uaUnderRepair.length} truck{uaUnderRepair.length === 1 ? '' : 's'}</div>
+                      {renderGroups(uaUnderRepair)}
+                    </>
+                  )}
+                  {uaNotStarted.length > 0 && (
+                    <>
+                      <div className="mm-substatus">Not started · {uaNotStarted.length} truck{uaNotStarted.length === 1 ? '' : 's'}</div>
+                      {renderGroups(uaNotStarted)}
+                    </>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
