@@ -14,6 +14,7 @@ export default function Queue() {
   const [mechanics, setMechanics] = useState([])
   const [vendors, setVendors] = useState([])
   const [openGroups, setOpenGroups] = useState(new Set())
+  const [vendorFilter, setVendorFilter] = useState('')
   const [loading, setLoading] = useState(true)
 
   async function load() {
@@ -21,8 +22,8 @@ export default function Queue() {
     setLoading(true)
     const [wo, me, ve] = await Promise.all([
       supabase.from('work_orders')
-        .select('id,code,description,status,waiting_reason,external_assignee,by_driver,assigned_mechanic_id,specialty:specialties(label),complaint:complaints!inner(id,priority,status,truck:trucks(plate,code))')
-        .eq('is_outsourced', false).eq('voided', false).neq('status', 'done'),
+        .select('id,code,description,status,waiting_reason,external_assignee,by_driver,assigned_mechanic_id,is_outsourced,sent_date,expected_back_date,vendor:vendors(id,name),specialty:specialties(label),complaint:complaints!inner(id,priority,status,truck:trucks(plate,code))')
+        .eq('voided', false).neq('status', 'done'),
       supabase.from('mechanics').select('id,code,name,nickname,can_lift').eq('status', 'Active').eq('employment_type', 'in_house').order('code'),
       supabase.from('vendors').select('id,name').eq('status', 'Active').order('name'),
     ])
@@ -34,12 +35,13 @@ export default function Queue() {
   }
   useEffect(() => { load() }, [])
 
-  const unassigned = useMemo(() => rows.filter(w => !w.assigned_mechanic_id && !w.external_assignee && !w.by_driver), [rows])
-  const others = useMemo(() => rows.filter(w => !w.assigned_mechanic_id && (w.external_assignee || w.by_driver)), [rows])
+  const unassigned = useMemo(() => rows.filter(w => !w.is_outsourced && !w.assigned_mechanic_id && !w.external_assignee && !w.by_driver), [rows])
+  const others = useMemo(() => rows.filter(w => !w.is_outsourced && !w.assigned_mechanic_id && (w.external_assignee || w.by_driver)), [rows])
+  const atVendor = useMemo(() => rows.filter(w => w.is_outsourced), [rows])
   const byMech = useMemo(() => {
     const m = new Map()
     for (const w of rows) {
-      if (!w.assigned_mechanic_id) continue
+      if (w.is_outsourced || !w.assigned_mechanic_id) continue
       if (!m.has(w.assigned_mechanic_id)) m.set(w.assigned_mechanic_id, [])
       m.get(w.assigned_mechanic_id).push(w)
     }
@@ -64,6 +66,23 @@ export default function Queue() {
     if (msg) show(msg)
     load()
   }
+
+  // group at-vendor jobs by vendor (respecting the vendor filter)
+  const vendorGroups = useMemo(() => {
+    const list = vendorFilter ? atVendor.filter(w => w.vendor?.id === vendorFilter) : atVendor
+    const m = new Map()
+    for (const w of list) {
+      const key = w.vendor?.name || 'No vendor'
+      if (!m.has(key)) m.set(key, [])
+      m.get(key).push(w)
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [atVendor, vendorFilter])
+  const vendorsInUse = useMemo(() => {
+    const seen = new Map()
+    for (const w of atVendor) if (w.vendor?.id) seen.set(w.vendor.id, w.vendor.name)
+    return [...seen.entries()]
+  }, [atVendor])
 
   if (loading) return (
     <>
@@ -129,7 +148,19 @@ export default function Queue() {
                   </div>
                   {jobs.length === 0
                     ? <div className="mcard-idle" style={{ padding: '6px 2px' }}>Nothing assigned</div>
-                    : jobs.map(w => <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />)}
+                    : (() => {
+                      const groups = [
+                        ['In process', jobs.filter(j => j.status === 'in_progress')],
+                        ['In queue', jobs.filter(j => j.status === 'assigned')],
+                        ['Waiting', jobs.filter(j => ['paused', 'awaiting_parts'].includes(j.status))],
+                      ].filter(([, arr]) => arr.length > 0)
+                      return groups.map(([label, arr]) => (
+                        <div key={label}>
+                          <div className="mm-substatus">{label} · {arr.length}</div>
+                          {arr.map(w => <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />)}
+                        </div>
+                      ))
+                    })()}
                 </div>
               )
             })}
@@ -142,6 +173,52 @@ export default function Queue() {
             )}
           </div>
 
+        </div>
+
+        {/* At vendor — outsourced jobs, grouped by vendor */}
+        <div className="mm-section" style={{ marginTop: 8 }}>
+          <div className="mm-section-head">
+            <h3>At vendor</h3><span className="crow-wocount">{atVendor.length}</span>
+            {vendorsInUse.length > 1 && (
+              <select value={vendorFilter} onChange={e => setVendorFilter(e.target.value)}
+                style={{ marginLeft: 'auto', width: 'auto', padding: '5px 8px', fontSize: 12 }}>
+                <option value="">All vendors</option>
+                {vendorsInUse.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+            )}
+          </div>
+          {atVendor.length === 0 ? (
+            <div className="mcard-idle" style={{ padding: '6px 2px' }}>Nothing out at vendors.</div>
+          ) : vendorGroups.map(([vname, items]) => (
+            <div key={vname} style={{ marginBottom: 6 }}>
+              <div className="mm-substatus">{vname} · {items.length}</div>
+              {items.map(w => (
+                <div className="mm-row" key={w.id}>
+                  <div className="mm-top">
+                    <div className="mm-l">
+                      <div className="who" style={{ fontWeight: 600 }}>{woTitle(w)}</div>
+                      <div className="code">
+                        <Plate>{w.complaint?.truck?.plate}</Plate> · {w.specialty?.label || '\u2014'} · {w.code}
+                        {w.sent_date && <span> · sent {w.sent_date}</span>}
+                        {w.expected_back_date && <span> · back {w.expected_back_date}</span>}
+                      </div>
+                    </div>
+                    <Badge tone="out">At vendor</Badge>
+                  </div>
+                  <div className="mm-actions">
+                    <button className="btn primary sm"
+                      onClick={() => patch(w.id, { status: 'done', returned_date: new Date().toISOString().slice(0, 10) }, 'Returned & done.')}>
+                      Returned — done
+                    </button>
+                    <button className="btn ghost sm"
+                      onClick={() => patch(w.id, { status: 'unassigned', is_outsourced: false, returned_date: new Date().toISOString().slice(0, 10) }, 'Returned — back to shop.')}>
+                      Returned — back to shop
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
       {node}
