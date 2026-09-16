@@ -340,6 +340,11 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
 
         {!waitMode && <button className="btn ghost sm" onClick={() => { setWaitMode(true); setOutMode(false) }}>Waiting…</button>}
         {!outMode && <button className="btn ghost sm" onClick={() => { setOutMode(true); setWaitMode(false) }}>Outsource…</button>}
+        <button className={'btn ghost sm' + (w.by_driver ? ' driver-on' : '')}
+          title="Toggle: this job is done by a driver"
+          onClick={() => onPatch(w.id, { by_driver: !w.by_driver }, w.by_driver ? 'Driver flag cleared.' : 'Marked done by driver.')}>
+          {w.by_driver ? 'Driver \u2713' : 'Driver'}
+        </button>
       </div>
 
       {waitMode && (
