@@ -205,6 +205,7 @@ function WorkOrderRow({ w, refs, onPatch, onTouch, onFollowUp }) {
   const [outVendorId, setOutVendorId] = useState('')
   const [outSent, setOutSent] = useState(new Date().toISOString().slice(0, 10))
   const [outBack, setOutBack] = useState('')
+  const [outPerson, setOutPerson] = useState('')
   const [editMode, setEditMode] = useState(false)
   const [edDesc, setEdDesc] = useState('')
   const [edSpec, setEdSpec] = useState('')
@@ -217,7 +218,7 @@ function WorkOrderRow({ w, refs, onPatch, onTouch, onFollowUp }) {
   const canAssign = actions.includes('assign') || actions.includes('reassign')
 
   const assignee = w.is_outsourced
-    ? `→ ${w.vendor?.name || 'vendor'}`
+    ? `→ ${w.vendor?.name || 'vendor'}${w.external_assignee ? ` · ${w.external_assignee}` : ''}`
     : (w.mechanic?.name ? title(w.mechanic.name)
       : (w.external_assignee ? `${w.external_assignee} (external)` : 'Unassigned'))
 
@@ -243,10 +244,10 @@ function WorkOrderRow({ w, refs, onPatch, onTouch, onFollowUp }) {
       expected_back_date: outBack || null,
       status: 'awaiting_outsource',
       assigned_mechanic_id: null,
-      external_assignee: null,
+      external_assignee: outPerson.trim() || null,
       waiting_reason: null,
     }, 'Sent to vendor.')
-    setOutMode(false)
+    setOutMode(false); setOutPerson('')
   }
   function openEdit() {
     setEdDesc(w.description || ''); setEdSpec(w.required_specialty_id || '')
@@ -306,6 +307,8 @@ function WorkOrderRow({ w, refs, onPatch, onTouch, onFollowUp }) {
             <div style={{ fontSize: 12, color: 'var(--muted)' }}>Send this job to a vendor:</div>
             <SearchSelect value={outVendorId} onChange={setOutVendorId} placeholder="Search vendor..."
               options={(refs.vendors || []).map(v => ({ value: v.id, label: v.name }))} />
+            <input value={outPerson} onChange={e => setOutPerson(e.target.value)}
+              placeholder="Person / name (optional)" style={{ fontSize: 13, padding: '6px 9px' }} />
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
               <label style={{ fontSize: 11, color: 'var(--muted)' }}>Sent
                 <input type="date" value={outSent} onChange={e => setOutSent(e.target.value)} style={{ fontSize: 13, padding: '5px 7px' }} /></label>

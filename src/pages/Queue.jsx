@@ -253,6 +253,7 @@ export default function Queue() {
                       <div className="who" style={{ fontWeight: 600 }}>{woTitle(w)}</div>
                       <div className="code">
                         <Plate>{w.complaint?.truck?.plate}</Plate> · {w.specialty?.label || '\u2014'} · {w.code}
+                        {w.external_assignee && <span> · {w.external_assignee}</span>}
                         {w.sent_date && <span> · sent {w.sent_date}</span>}
                         {w.expected_back_date && <span> · back {w.expected_back_date}</span>}
                       </div>
@@ -288,6 +289,7 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
   const [outVendorId, setOutVendorId] = useState('')
   const [outSent, setOutSent] = useState(new Date().toISOString().slice(0, 10))
   const [outBack, setOutBack] = useState('')
+  const [outPerson, setOutPerson] = useState('')
 
   const inProgress = w.status === 'in_progress'
   const hasWorker = w.assigned_mechanic_id || w.external_assignee
@@ -301,9 +303,9 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
     onPatch(w.id, {
       is_outsourced: true, vendor_id: outVendorId || null, sent_date: outSent || null,
       expected_back_date: outBack || null, status: 'awaiting_outsource',
-      assigned_mechanic_id: null, external_assignee: null, waiting_reason: null,
+      assigned_mechanic_id: null, external_assignee: outPerson.trim() || null, waiting_reason: null,
     }, 'Sent to vendor.')
-    setOutMode(false)
+    setOutMode(false); setOutPerson('')
   }
 
   return (
@@ -353,6 +355,8 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
         <div className="mm-panel">
           <SearchSelect value={outVendorId} onChange={setOutVendorId} placeholder="Vendor..."
             options={vendors.map(v => ({ value: v.id, label: v.name }))} />
+          <input value={outPerson} onChange={e => setOutPerson(e.target.value)} placeholder="Person / name (optional)"
+            style={{ fontSize: 13, padding: '6px 9px', width: 180 }} />
           <label style={{ fontSize: 11, color: 'var(--muted)' }}>Sent<input type="date" value={outSent} onChange={e => setOutSent(e.target.value)} style={{ fontSize: 13, padding: '5px 7px' }} /></label>
           <label style={{ fontSize: 11, color: 'var(--muted)' }}>Back<input type="date" value={outBack} onChange={e => setOutBack(e.target.value)} style={{ fontSize: 13, padding: '5px 7px' }} /></label>
           <button className="btn primary sm" onClick={saveOut}>Send</button>
