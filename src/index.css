@@ -310,6 +310,13 @@ textarea { resize: vertical; min-height: 72px; }
 .slip-note { font-size: 12px; color: var(--text-2); margin-top: 12px; }
 .slip-sign { display: flex; justify-content: space-between; margin-top: 40px; font-size: 13px; }
 .slip-actions { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 61; }
+.slip-list { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.slip-lrow { display: grid; grid-template-columns: 100px 110px 1fr 90px 130px 130px 70px; gap: 10px; align-items: center; padding: 9px 14px; border-top: 1px solid var(--line-2); font-size: 13px; }
+.slip-lrow:first-child { border-top: none; }
+.slip-lhead { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; background: #FAFBFC; }
+.slip-lrow .r { text-align: right; }
+.slip-lrow .mono { font-family: var(--font-mono); }
+@media (max-width: 760px) { .slip-lrow { grid-template-columns: 1fr auto; } .slip-lrow span:nth-child(3),.slip-lrow span:nth-child(5) { display: none; } }
 
 @media print {
   body * { visibility: hidden; }

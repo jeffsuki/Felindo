@@ -18,6 +18,7 @@ export default function FleetContractDetail() {
   const [c, setC] = useState(null)
   const [deliveries, setDeliveries] = useState([])
   const [trucks, setTrucks] = useState([])
+  const [drivers, setDrivers] = useState([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [slip, setSlip] = useState(null)
@@ -25,14 +26,16 @@ export default function FleetContractDetail() {
   async function load() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
-    const [ct, dl, tr] = await Promise.all([
+    const [ct, dl, tr, dr] = await Promise.all([
       supabase.from('fleet_contracts').select('*').eq('id', id).single(),
       supabase.from('fleet_deliveries').select('*').eq('contract_id', id).order('do_no', { ascending: true }),
       supabase.from('trucks').select('id,plate,fleet_division,capacity_kg,status').eq('status', 'Active').order('plate'),
+      supabase.from('fleet_drivers').select('name').order('name'),
     ])
     setC(ct.data || null)
     setDeliveries(dl.data || [])
     setTrucks(tr.data || [])
+    setDrivers(dr.data || [])
     setLoading(false)
   }
   useEffect(() => { load() }, [id])
@@ -91,14 +94,14 @@ export default function FleetContractDetail() {
           <div className="metric"><div className="k">Susut</div><div className="v" style={{ fontSize: 18, color: overTol ? 'var(--urgent)' : undefined }}>{kg(totals.susut)}{overTol && ' ⚠'}</div></div>
         </div>
 
-        {adding && <AddDelivery trucks={trucks} onAdd={addDelivery} onCancel={() => setAdding(false)} />}
+        {adding && <AddDelivery trucks={trucks} drivers={drivers} onAdd={addDelivery} onCancel={() => setAdding(false)} />}
 
         {deliveries.length === 0 ? (
           <Empty title="No deliveries yet">Assign a driver and truck with “+ Add delivery”.</Empty>
         ) : (
           <div className="clist" style={{ marginTop: 16 }}>
             {deliveries.map(d => (
-              <DeliveryRow key={d.id} d={d} trucks={trucks} tol={c.susut_tolerance}
+              <DeliveryRow key={d.id} d={d} trucks={trucks} drivers={drivers} tol={c.susut_tolerance}
                 onSave={(patch, msg) => patchDelivery(d.id, patch, msg)}
                 onDelete={() => delDelivery(d.id)} onSlip={() => setSlip(d)} />
             ))}
@@ -112,7 +115,7 @@ export default function FleetContractDetail() {
   )
 }
 
-function AddDelivery({ trucks, onAdd, onCancel }) {
+function AddDelivery({ trucks, drivers, onAdd, onCancel }) {
   const [truckId, setTruckId] = useState('')
   const [driver, setDriver] = useState('')
   const [tanggal, setTanggal] = useState(new Date().toISOString().slice(0, 10))
@@ -128,7 +131,7 @@ function AddDelivery({ trucks, onAdd, onCancel }) {
     onAdd({
       truck_id: truckId || null,
       plate: truck?.plate || null,
-      driver_name: driver.trim() || null,
+      driver_name: driver || null,
       tanggal: tanggal || null,
       estimasi_muat: num(est),
     })
@@ -138,16 +141,21 @@ function AddDelivery({ trucks, onAdd, onCancel }) {
     <div className="form" style={{ maxWidth: 640, marginBottom: 16 }}>
       <div className="row2">
         <div className="field">
-          <label>Truck<span className="hint">capacity shown</span></label>
+          <label>Truck<span className="hint">active only · capacity shown</span></label>
           <SearchSelect value={truckId} onChange={pickTruck} placeholder="Search truck…"
             options={trucks.map(t => ({ value: t.id, label: t.plate, sub: t.capacity_kg ? `${Number(t.capacity_kg).toLocaleString()} kg` : (t.fleet_division || ''), search: t.fleet_division || '' }))} />
         </div>
-        <div className="field"><label>Driver (name)</label><input value={driver} onChange={e => setDriver(e.target.value)} placeholder="Typed each time" /></div>
+        <div className="field">
+          <label>Driver</label>
+          <SearchSelect value={driver} onChange={setDriver} placeholder="Select driver…"
+            options={drivers.map(d => ({ value: d.name, label: d.name }))} />
+        </div>
       </div>
       <div className="row2">
         <div className="field"><label>Date</label><input type="date" value={tanggal} onChange={e => setTanggal(e.target.value)} /></div>
-        <div className="field"><label>Estimasi muat (kg)</label><input type="number" value={est} onChange={e => setEst(e.target.value)} placeholder={truck?.capacity_kg ? String(truck.capacity_kg) : ''} /></div>
+        <div className="field"><label>Estimasi muat (kg)<span className="hint">suggested from capacity</span></label><input type="number" value={est} onChange={e => setEst(e.target.value)} placeholder={truck?.capacity_kg ? String(truck.capacity_kg) : ''} /></div>
       </div>
+      {drivers.length === 0 && <div className="pool-hint" style={{ marginBottom: 8 }}>No drivers registered — add them in Clients &amp; Places → Drivers.</div>}
       <div className="btn-group">
         <button className="btn primary" onClick={submit}>Add delivery</button>
         <button className="btn ghost" onClick={onCancel}>Cancel</button>
@@ -156,7 +164,7 @@ function AddDelivery({ trucks, onAdd, onCancel }) {
   )
 }
 
-function DeliveryRow({ d, trucks, tol, onSave, onDelete, onSlip }) {
+function DeliveryRow({ d, trucks, drivers, tol, onSave, onDelete, onSlip }) {
   const [open, setOpen] = useState(false)
   const [f, setF] = useState({})
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
@@ -205,7 +213,10 @@ function DeliveryRow({ d, trucks, tol, onSave, onDelete, onSlip }) {
         <div className="crow-detail">
           <div className="fd-grid">
             <label className="fd-f"><span>Date</span><input type="date" value={f.tanggal} onChange={e => set('tanggal', e.target.value)} /></label>
-            <label className="fd-f"><span>Driver</span><input value={f.driver_name} onChange={e => set('driver_name', e.target.value)} /></label>
+            <div className="fd-f"><span>Driver</span>
+              <SearchSelect value={f.driver_name} onChange={v => set('driver_name', v)} placeholder="Select driver…"
+                options={(drivers || []).map(dr => ({ value: dr.name, label: dr.name }))} />
+            </div>
             <label className="fd-f"><span>Estimasi muat</span><input type="number" value={f.estimasi_muat} onChange={e => set('estimasi_muat', e.target.value)} /></label>
           </div>
           <div className="fd-sec">Realisasi</div>
