@@ -1,29 +1,38 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Spinner, Empty, useToast } from '../components/ui'
-import SlipEditor from '../components/SlipEditor'
+import SearchSelect from '../components/SearchSelect'
 
-const rp = n => (n === null || n === undefined || n === '') ? 'Rp 0' : 'Rp ' + Number(n).toLocaleString()
+const num = v => (v === null || v === undefined || v === '') ? null : Number(v)
+const rp = n => (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString()
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const netOf = d => Number(d.borongan || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0) - Number(d.potongan_lain || 0)
 const isFilled = d => d.borongan != null
+const NUMF = ['do_no', 'borongan', 'bbm_liter', 'bbm_rupiah', 'potongan_susut', 'potongan_pm', 'potongan_lain']
 
-// Master list of Slip Uang Jalan — fill each slip here (click a row).
 export default function FleetSlips() {
   const { show, node } = useToast()
   const [rows, setRows] = useState([])
+  const [contracts, setContracts] = useState([])
+  const [trucks, setTrucks] = useState([])
+  const [drivers, setDrivers] = useState([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
-  const [filter, setFilter] = useState('all')   // all | filled | blank
-  const [slipId, setSlipId] = useState(null)
+  const [filter, setFilter] = useState('all')
+  const [adding, setAdding] = useState(false)
+  const [printId, setPrintId] = useState(null)
 
   async function load() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
-    const { data } = await supabase.from('fleet_deliveries')
-      .select('*, contract:fleet_contracts(control_no,client,origin,destination)')
-      .order('tanggal', { ascending: false, nullsFirst: false })
-    setRows(data || []); setLoading(false)
+    const [dl, ct, tr, dr] = await Promise.all([
+      supabase.from('fleet_deliveries').select('*, contract:fleet_contracts(control_no,client,origin,destination)').order('tanggal', { ascending: false, nullsFirst: false }),
+      supabase.from('fleet_contracts').select('id,control_no,client').order('control_no'),
+      supabase.from('trucks').select('id,plate,status').eq('status', 'Active').order('plate'),
+      supabase.from('drivers').select('name,nickname,status').eq('status', 'Active').order('name'),
+    ])
+    setRows(dl.data || []); setContracts(ct.data || []); setTrucks(tr.data || []); setDrivers(dr.data || [])
+    setLoading(false)
   }
   useEffect(() => { load() }, [])
 
@@ -38,60 +47,162 @@ export default function FleetSlips() {
   }, [rows, q, filter])
   const total = useMemo(() => visible.reduce((a, d) => a + netOf(d), 0), [visible])
 
-  async function saveSlip(did, patch) {
-    const { error } = await supabase.from('fleet_deliveries').update(patch).eq('id', did)
+  function setCell(did, field, value) { setRows(rs => rs.map(r => r.id === did ? { ...r, [field]: value } : r)) }
+  async function saveField(did, field, raw) {
+    const value = NUMF.includes(field) ? num(raw) : (raw === '' ? null : raw)
+    const { error } = await supabase.from('fleet_deliveries').update({ [field]: value }).eq('id', did)
+    if (error) show(error.message, true)
+  }
+  async function saveTruck(did, truckId) {
+    const t = trucks.find(x => x.id === truckId)
+    setCell(did, 'truck_id', truckId || null); setCell(did, 'plate', t?.plate || null)
+    await supabase.from('fleet_deliveries').update({ truck_id: truckId || null, plate: t?.plate || null }).eq('id', did)
+  }
+  async function delRow(did) {
+    const { error } = await supabase.from('fleet_deliveries').delete().eq('id', did)
     if (error) return show(error.message, true)
-    setRows(rs => rs.map(r => r.id === did ? { ...r, ...patch } : r))
-    show('Slip saved.')
+    setRows(rs => rs.filter(r => r.id !== did))
+  }
+  async function createSlip({ contract_id, truck_id, driver_name, tanggal }) {
+    const existing = rows.filter(r => r.contract_id === contract_id)
+    const nextNo = existing.reduce((m, d) => Math.max(m, d.do_no || 0), 0) + 1
+    const t = trucks.find(x => x.id === truck_id)
+    const { error } = await supabase.from('fleet_deliveries').insert({
+      contract_id, do_no: nextNo, truck_id: truck_id || null, plate: t?.plate || null,
+      driver_name: driver_name || null, tanggal: tanggal || null,
+    })
+    if (error) return show(error.message, true)
+    show('Slip created.'); setAdding(false); load()
   }
 
   if (loading) return (<><div className="topbar"><div><h1>Slip Uang Jalan</h1></div></div><div className="content"><Spinner /></div></>)
-
-  const active = rows.find(r => r.id === slipId)
+  const active = rows.find(r => r.id === printId)
 
   return (
     <>
       <div className="topbar">
-        <div>
-          <h1>Slip Uang Jalan</h1>
-          <div className="sub">Fill and print road-money slips — click a row</div>
-        </div>
+        <div><h1>Slip Uang Jalan</h1><div className="sub">Fill inline, print each slip</div></div>
+        <button className="btn primary" onClick={() => setAdding(a => !a)}>{adding ? 'Cancel' : '+ New slip'}</button>
       </div>
-      <div className="content" style={{ maxWidth: 1080 }}>
-        <div className="controls">
+      <div className="content">
+        {adding && <NewSlip contracts={contracts} trucks={trucks} drivers={drivers} onCreate={createSlip} onCancel={() => setAdding(false)} />}
+
+        <div className="controls" style={{ marginTop: adding ? 20 : 0 }}>
           <div className="field grow"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by plate, driver, control no, client…" /></div>
           <div className="seg-lens">
-            {[['all', 'All'], ['blank', 'Not filled'], ['filled', 'Filled']].map(([v, l]) => (
-              <button key={v} className={filter === v ? 'on' : ''} onClick={() => setFilter(v)}>{l}</button>
-            ))}
+            {[['all', 'All'], ['blank', 'Not filled'], ['filled', 'Filled']].map(([v, l]) => (<button key={v} className={filter === v ? 'on' : ''} onClick={() => setFilter(v)}>{l}</button>))}
           </div>
         </div>
+
         {visible.length === 0 ? (
-          <Empty title="No slips">{q ? 'No matches.' : 'Deliveries appear here — click one to fill its slip.'}</Empty>
+          <Empty title="No slips">{q ? 'No matches.' : 'Create a slip with “+ New slip”, or add a delivery in a contract.'}</Empty>
         ) : (
           <>
-            <div className="hist-count">{visible.length} slip{visible.length === 1 ? '' : 's'} · total net {rp(total)}</div>
-            <div className="slip-list">
-              <div className="slip-lrow slip-lhead">
-                <span>Date</span><span>Plate</span><span>Driver</span><span>Contract</span><span className="r">Borongan</span><span className="r">Net</span><span></span>
-              </div>
-              {visible.map(d => (
-                <div className="slip-lrow slip-lclick" key={d.id} onClick={() => setSlipId(d.id)}>
-                  <span>{fmtDate(d.tanggal)}</span>
-                  <span className="mono">{d.plate || '—'}</span>
-                  <span>{d.driver_name || '—'}</span>
-                  <span className="mono">{d.contract?.control_no || '—'}</span>
-                  <span className="r mono">{isFilled(d) ? rp(d.borongan) : '—'}</span>
-                  <span className="r mono" style={{ fontWeight: 700 }}>{isFilled(d) ? rp(netOf(d)) : '—'}</span>
-                  <span className="r">{isFilled(d) ? <span className="fc-out">edit</span> : <span className="fc-out" style={{ color: 'var(--accent)' }}>fill</span>}</span>
-                </div>
-              ))}
+            <div className="hist-count">{visible.length} slip{visible.length === 1 ? '' : 's'} · total net Rp {total.toLocaleString()}</div>
+            <div className="dk-wrap">
+              <table className="dk-tbl slip-grid">
+                <thead>
+                  <tr>
+                    <th>Tanggal</th><th>Plat</th><th>Supir</th><th>No. Kontrol</th><th>Asal</th><th>Tujuan</th>
+                    <th className="r">Borongan</th><th className="r">BBM L</th><th className="r">BBM Rp</th>
+                    <th className="r">Pot Susut</th><th className="r">Pot PM</th><th className="r">Pot Lain</th>
+                    <th className="r">Sisa</th><th>Keterangan</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map(d => (
+                    <tr key={d.id}>
+                      <td><input type="date" value={d.tanggal || ''} onChange={e => setCell(d.id, 'tanggal', e.target.value)} onBlur={e => saveField(d.id, 'tanggal', e.target.value)} /></td>
+                      <td><select value={d.truck_id || ''} onChange={e => saveTruck(d.id, e.target.value)}><option value="">{d.plate || '—'}</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></td>
+                      <td><select value={d.driver_name || ''} onChange={e => { setCell(d.id, 'driver_name', e.target.value); saveField(d.id, 'driver_name', e.target.value) }}><option value="">—</option>{drivers.map(dr => <option key={dr.name} value={dr.name}>{dr.name}</option>)}{d.driver_name && !drivers.some(x => x.name === d.driver_name) && <option value={d.driver_name}>{d.driver_name}</option>}</select></td>
+                      <td className="mono ro">{d.contract?.control_no || '—'}</td>
+                      <td className="ro">{d.contract?.origin || '—'}</td>
+                      <td className="ro">{d.contract?.destination || '—'}</td>
+                      <td><input type="number" value={d.borongan ?? ''} onChange={e => setCell(d.id, 'borongan', e.target.value)} onBlur={e => saveField(d.id, 'borongan', e.target.value)} /></td>
+                      <td><input type="number" value={d.bbm_liter ?? ''} onChange={e => setCell(d.id, 'bbm_liter', e.target.value)} onBlur={e => saveField(d.id, 'bbm_liter', e.target.value)} /></td>
+                      <td><input type="number" value={d.bbm_rupiah ?? ''} onChange={e => setCell(d.id, 'bbm_rupiah', e.target.value)} onBlur={e => saveField(d.id, 'bbm_rupiah', e.target.value)} /></td>
+                      <td><input type="number" value={d.potongan_susut ?? ''} onChange={e => setCell(d.id, 'potongan_susut', e.target.value)} onBlur={e => saveField(d.id, 'potongan_susut', e.target.value)} /></td>
+                      <td><input type="number" value={d.potongan_pm ?? ''} onChange={e => setCell(d.id, 'potongan_pm', e.target.value)} onBlur={e => saveField(d.id, 'potongan_pm', e.target.value)} /></td>
+                      <td><input type="number" value={d.potongan_lain ?? ''} onChange={e => setCell(d.id, 'potongan_lain', e.target.value)} onBlur={e => saveField(d.id, 'potongan_lain', e.target.value)} /></td>
+                      <td className="mono ro r" style={{ fontWeight: 700 }}>{isFilled(d) ? rp(netOf(d)) : '—'}</td>
+                      <td><input value={d.keterangan || ''} onChange={e => setCell(d.id, 'keterangan', e.target.value)} onBlur={e => saveField(d.id, 'keterangan', e.target.value)} /></td>
+                      <td className="dk-actions">
+                        <button className="btn ghost sm" onClick={() => setPrintId(d.id)}>Print</button>
+                        <button className="btn ghost sm void-btn" onClick={() => { if (confirm('Remove this slip/delivery?')) delRow(d.id) }}>✕</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </>
         )}
       </div>
-      {active && <SlipEditor d={active} c={active.contract || {}} onSave={p => saveSlip(active.id, p)} onClose={() => setSlipId(null)} />}
+      {active && <SlipPrintH d={active} c={active.contract || {}} onClose={() => setPrintId(null)} />}
       {node}
     </>
+  )
+}
+
+function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
+  const [contractId, setContractId] = useState('')
+  const [truckId, setTruckId] = useState('')
+  const [driver, setDriver] = useState('')
+  const [tanggal, setTanggal] = useState(new Date().toISOString().slice(0, 10))
+  const [err, setErr] = useState('')
+  return (
+    <div className="form" style={{ maxWidth: 640 }}>
+      <div className="field"><label>Contract *</label>
+        <SearchSelect value={contractId} onChange={setContractId} placeholder="Pick contract…"
+          options={contracts.map(c => ({ value: c.id, label: c.control_no, sub: c.client || '', search: c.client || '' }))} />
+      </div>
+      <div className="row2">
+        <div className="field"><label>Truck</label>
+          <SearchSelect value={truckId} onChange={setTruckId} placeholder="Pick truck…" options={trucks.map(t => ({ value: t.id, label: t.plate }))} />
+        </div>
+        <div className="field"><label>Driver</label>
+          <SearchSelect value={driver} onChange={setDriver} placeholder="Pick driver…" options={drivers.map(d => ({ value: d.name, label: d.nickname ? `${d.name} (${d.nickname})` : d.name }))} />
+        </div>
+      </div>
+      <div className="field"><label>Date</label><input type="date" value={tanggal} onChange={e => setTanggal(e.target.value)} /></div>
+      {err && <div style={{ color: 'var(--urgent)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
+      <div className="btn-group">
+        <button className="btn primary" onClick={() => { if (!contractId) return setErr('Pick a contract.'); onCreate({ contract_id: contractId, truck_id: truckId, driver_name: driver, tanggal }) }}>Create slip</button>
+        <button className="btn ghost" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+function SlipPrintH({ d, c, onClose }) {
+  return (
+    <div className="slip-scrim">
+      <div className="slip-hp">
+        <div className="slip-h">SLIP UANG JALAN</div>
+        <div className="slip-hp-meta">
+          <div><b>Plat BK:</b> {d.plate || '—'}</div>
+          <div><b>Tanggal DO:</b> {fmtDate(d.tanggal)}</div>
+          <div><b>Nama Supir:</b> {d.driver_name || '—'}</div>
+          <div><b>Nomor DO:</b> {d.do_no}</div>
+        </div>
+        <table className="slip-hp-tbl">
+          <thead><tr>
+            <th>NO</th><th>NOMOR KONTROL</th><th>ASAL</th><th>TUJUAN</th><th>JUMLAH BORONGAN</th>
+            <th>BBM LITER</th><th>BBM RUPIAH</th><th>POT. SUSUT</th><th>POT. PM</th><th>POT. LAIN</th><th>SISA BORONGAN</th><th>KETERANGAN</th>
+          </tr></thead>
+          <tbody><tr>
+            <td>{d.do_no}</td><td>{c.control_no || '—'}</td><td>{c.origin || '—'}</td><td>{c.destination || '—'}</td>
+            <td className="r">{rp(d.borongan)}</td><td className="r">{d.bbm_liter || ''}</td><td className="r">{rp(d.bbm_rupiah)}</td>
+            <td className="r">{rp(d.potongan_susut)}</td><td className="r">{rp(d.potongan_pm)}</td><td className="r">{rp(d.potongan_lain)}</td>
+            <td className="r" style={{ fontWeight: 800 }}>{rp(netOf(d))}</td><td>{d.keterangan || ''}</td>
+          </tr></tbody>
+        </table>
+        <div className="slip-sign" style={{ marginTop: 40 }}><div>Diterima,</div><div>Hormat kami,</div></div>
+      </div>
+      <div className="slip-actions no-print">
+        <button className="btn primary" onClick={() => window.print()}>Print</button>
+        <button className="btn ghost" onClick={onClose}>Close</button>
+      </div>
+    </div>
   )
 }

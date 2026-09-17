@@ -75,7 +75,7 @@ export default function FleetContracts() {
         <div><h1>Contracts</h1><div className="sub">Master list of client hauling contracts</div></div>
         <button className="btn primary" onClick={() => setFormFor(formFor === 'new' ? null : 'new')}>{formFor === 'new' ? 'Cancel' : '+ New contract'}</button>
       </div>
-      <div className="content" style={{ maxWidth: 1200 }}>
+      <div className="content">
         {formFor && <ContractForm clients={clients} locations={locations} initial={formFor === 'new' ? null : formFor}
           onSave={(p) => saveContract(p, formFor === 'new' ? null : formFor.id)} onCancel={() => setFormFor(null)} />}
 

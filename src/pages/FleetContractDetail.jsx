@@ -86,7 +86,7 @@ export default function FleetContractDetail() {
         </div>
         <button className="btn ghost" onClick={() => nav('/fleet/contracts')}>← Contracts</button>
       </div>
-      <div className="content" style={{ maxWidth: 1240 }}>
+      <div className="content">
         <div className="metrics">
           <div className="metric"><div className="k">Contracted</div><div className="v" style={{ fontSize: 18 }}>{kg(c.quantity_kg)}</div></div>
           <div className="metric"><div className="k">Loaded (real)</div><div className="v" style={{ fontSize: 18 }}>{kg(totals.muatan)}</div></div>

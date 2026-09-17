@@ -300,7 +300,7 @@ textarea { resize: vertical; min-height: 72px; }
 
 /* ---------- Daftar Kontrol editable grid ---------- */
 .dk-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow); }
-.dk-tbl { border-collapse: collapse; width: 100%; min-width: 1040px; }
+.dk-tbl { border-collapse: collapse; width: 100%; table-layout: fixed; }
 .dk-tbl th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; background: #FAFBFC; }
 .dk-tbl td { padding: 2px 4px; border-bottom: 1px solid var(--line-2); vertical-align: middle; }
 .dk-tbl input, .dk-tbl select { border: 1px solid transparent; background: transparent; padding: 6px; font-size: 13px; width: 100%; border-radius: 4px; font-family: inherit; }
@@ -313,6 +313,26 @@ textarea { resize: vertical; min-height: 72px; }
 .ct-tbl .mono { font-family: var(--font-mono); }
 .ct-no { font-family: var(--font-mono); font-weight: 700; }
 .ct-sub { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+
+/* ---------- Slip grid (wide, Excel-like) + horizontal print ---------- */
+.slip-grid { min-width: 1280px; }
+.slip-grid td.ro { padding: 8px; font-size: 13px; color: var(--text-2); }
+.slip-grid td.mono { font-family: var(--font-mono); }
+.slip-grid td.r, .slip-grid th.r { text-align: right; }
+.slip-hp { background: #fff; width: 900px; max-width: 100%; padding: 28px 32px; border-radius: 8px; box-shadow: var(--shadow); }
+.slip-hp-meta { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 4px 16px; font-size: 13px; margin: 12px 0 16px; }
+.slip-hp-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.slip-hp-tbl th { background: #F1F3F5; border: 1px solid var(--ink); padding: 6px 5px; font-size: 10px; text-align: center; }
+.slip-hp-tbl td { border: 1px solid var(--line); padding: 8px 6px; }
+.slip-hp-tbl td.r { text-align: right; font-family: var(--font-mono); }
+@media print {
+  @page { size: landscape; }
+  body * { visibility: hidden; }
+  .slip-hp, .slip-hp * { visibility: visible; }
+  .slip-scrim { position: static; background: none; padding: 0; display: block; }
+  .slip-hp { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; border-radius: 0; }
+  .no-print { display: none !important; }
+}
 
 /* slip editor inputs + print/screen row visibility */
 .slip-in { border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; font-size: 13px; font-family: var(--font-mono); width: 130px; }
