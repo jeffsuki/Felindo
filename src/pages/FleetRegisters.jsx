@@ -15,11 +15,10 @@ export default function FleetRegisters() {
         <div className="md-tabs">
           <button className={tab === 'clients' ? 'on' : ''} onClick={() => setTab('clients')}>Clients</button>
           <button className={tab === 'locations' ? 'on' : ''} onClick={() => setTab('locations')}>Origins & Destinations</button>
-          <button className={tab === 'drivers' ? 'on' : ''} onClick={() => setTab('drivers')}>Drivers</button>
         </div>
       </div>
       <div className="content" style={{ maxWidth: 760 }}>
-        {tab === 'clients' ? <Clients show={show} /> : tab === 'locations' ? <Locations show={show} /> : <Drivers show={show} />}
+        {tab === 'clients' ? <Clients show={show} /> : <Locations show={show} />}
       </div>
       {node}
     </>

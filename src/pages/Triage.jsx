@@ -376,7 +376,7 @@ function WorkOrderRow({ w, refs, onPatch, onTouch, onFollowUp }) {
             <button className="btn primary sm" onClick={async () => { await onTouch(); onPatch(w.id, { status: 'in_progress' }, 'Started.') }}>Start</button>
           )}
           {actions.includes('wait') && !waitMode && (
-            <button className="btn ghost sm" onClick={() => setWaitMode(true)}>Wait…</button>
+            <button className="btn ghost sm" onClick={() => { setWaitReason(w.waiting_reason || ''); setWaitMode(true) }}>{w.status === 'paused' ? 'Edit waiting' : 'Wait…'}</button>
           )}
           {actions.includes('resume') && (
             <button className="btn primary sm" onClick={() => onPatch(w.id, { status: 'in_progress', waiting_reason: null }, 'Resumed.')}>Resume</button>

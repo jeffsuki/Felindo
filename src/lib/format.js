@@ -71,7 +71,7 @@ export function nextActions(status) {
     case 'unassigned':        return ['assign', 'outsource']
     case 'assigned':          return ['start', 'outsource', 'reassign', 'unassign']
     case 'in_progress':       return ['wait', 'complete', 'reassign', 'unassign', 'outsource']
-    case 'paused':            return ['resume', 'complete', 'reassign', 'unassign', 'outsource']
+    case 'paused':            return ['resume', 'wait', 'complete', 'reassign', 'unassign', 'outsource']
     case 'awaiting_parts':    return ['resume', 'unassign']
     case 'awaiting_outsource':return ['return_from_vendor']
     default:                  return []

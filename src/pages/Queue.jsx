@@ -338,7 +338,7 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
           : <button className="btn primary sm" disabled={!hasWorker} title={hasWorker ? '' : 'Assign a mechanic first'}
               onClick={() => onPatch(w.id, { status: 'in_progress' }, 'Started.')}>Start</button>}
 
-        {!waitMode && <button className="btn ghost sm" onClick={() => { setWaitMode(true); setOutMode(false) }}>Waiting…</button>}
+        {!waitMode && <button className="btn ghost sm" onClick={() => { setWaitReason(w.waiting_reason || ''); setWaitMode(true); setOutMode(false) }}>{w.status === 'paused' ? 'Edit waiting' : 'Waiting…'}</button>}
         {!outMode && <button className="btn ghost sm" onClick={() => { setOutMode(true); setWaitMode(false) }}>Outsource…</button>}
         <button className={'btn ghost sm' + (w.by_driver ? ' driver-on' : '')}
           title="Toggle: this job is done by a driver"

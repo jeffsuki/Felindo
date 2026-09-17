@@ -30,7 +30,7 @@ export default function FleetContractDetail() {
       supabase.from('fleet_contracts').select('*').eq('id', id).single(),
       supabase.from('fleet_deliveries').select('*').eq('contract_id', id).order('do_no', { ascending: true }),
       supabase.from('trucks').select('id,plate,fleet_division,capacity_kg,status').eq('status', 'Active').order('plate'),
-      supabase.from('fleet_drivers').select('name').order('name'),
+      supabase.from('drivers').select('name,nickname,status').eq('status', 'Active').order('name'),
     ])
     setC(ct.data || null)
     setDeliveries(dl.data || [])
@@ -148,14 +148,14 @@ function AddDelivery({ trucks, drivers, onAdd, onCancel }) {
         <div className="field">
           <label>Driver</label>
           <SearchSelect value={driver} onChange={setDriver} placeholder="Select driver…"
-            options={drivers.map(d => ({ value: d.name, label: d.name }))} />
+            options={drivers.map(d => ({ value: d.name, label: d.nickname ? `${d.name} (${d.nickname})` : d.name, search: d.nickname || '' }))} />
         </div>
       </div>
       <div className="row2">
         <div className="field"><label>Date</label><input type="date" value={tanggal} onChange={e => setTanggal(e.target.value)} /></div>
         <div className="field"><label>Estimasi muat (kg)<span className="hint">suggested from capacity</span></label><input type="number" value={est} onChange={e => setEst(e.target.value)} placeholder={truck?.capacity_kg ? String(truck.capacity_kg) : ''} /></div>
       </div>
-      {drivers.length === 0 && <div className="pool-hint" style={{ marginBottom: 8 }}>No drivers registered — add them in Clients &amp; Places → Drivers.</div>}
+      {drivers.length === 0 && <div className="pool-hint" style={{ marginBottom: 8 }}>No active drivers — add them in Master Data → Drivers.</div>}
       <div className="btn-group">
         <button className="btn primary" onClick={submit}>Add delivery</button>
         <button className="btn ghost" onClick={onCancel}>Cancel</button>
@@ -215,7 +215,7 @@ function DeliveryRow({ d, trucks, drivers, tol, onSave, onDelete, onSlip }) {
             <label className="fd-f"><span>Date</span><input type="date" value={f.tanggal} onChange={e => set('tanggal', e.target.value)} /></label>
             <div className="fd-f"><span>Driver</span>
               <SearchSelect value={f.driver_name} onChange={v => set('driver_name', v)} placeholder="Select driver…"
-                options={(drivers || []).map(dr => ({ value: dr.name, label: dr.name }))} />
+                options={(drivers || []).map(dr => ({ value: dr.name, label: dr.nickname ? `${dr.name} (${dr.nickname})` : dr.name, search: dr.nickname || '' }))} />
             </div>
             <label className="fd-f"><span>Estimasi muat</span><input type="number" value={f.estimasi_muat} onChange={e => set('estimasi_muat', e.target.value)} /></label>
           </div>
