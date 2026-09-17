@@ -36,12 +36,13 @@ export default function FleetContractDetail() {
   useEffect(() => { load() }, [id])
 
   const totals = useMemo(() => {
-    const t = { muatan: 0, bongkar: 0, susut: 0 }
+    const t = { muatan: 0, bongkar: 0, susut: 0, committed: 0 }
     for (const d of rows) {
       t.muatan += Number(d.muatan || 0); t.bongkar += Number(d.bongkar || 0)
-      if (d.muatan != null && d.bongkar != null) t.susut += Number(d.muatan) - Number(d.bongkar)
+      if (d.muatan != null && d.muatan !== '' && d.bongkar != null && d.bongkar !== '') t.susut += Number(d.muatan) - Number(d.bongkar)
+      t.committed += Number(d.muatan ?? d.estimasi_muat ?? 0)
     }
-    t.outstanding = Math.max(Number(c?.quantity_kg || 0) - t.muatan, 0)
+    t.outstanding = Math.max(Number(c?.quantity_kg || 0) - t.committed, 0)
     return t
   }, [rows, c])
   const overTol = c && c.susut_tolerance != null && totals.muatan > 0 && (totals.susut / totals.muatan) > Number(c.susut_tolerance)
@@ -91,7 +92,7 @@ export default function FleetContractDetail() {
           <div className="metric"><div className="k">Loaded (real)</div><div className="v" style={{ fontSize: 18 }}>{kg(totals.muatan)}</div></div>
           <div className="metric"><div className="k">Outstanding</div><div className="v" style={{ fontSize: 18 }}>{kg(totals.outstanding)}</div></div>
           <div className="metric"><div className="k">Deliveries</div><div className="v" style={{ fontSize: 18 }}>{rows.length}</div></div>
-          <div className="metric"><div className="k">Susut</div><div className="v" style={{ fontSize: 18, color: overTol ? 'var(--urgent)' : undefined }}>{kg(totals.susut)}{overTol && ' ⚠'}</div></div>
+          <div className="metric"><div className="k">Total Susut</div><div className="v" style={{ fontSize: 18, color: overTol ? 'var(--urgent)' : undefined }}>{kg(totals.susut)}{overTol && ' ⚠'}</div></div>
         </div>
 
         <div className="dk-wrap">

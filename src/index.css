@@ -308,6 +308,11 @@ textarea { resize: vertical; min-height: 72px; }
 .dk-tbl input:focus, .dk-tbl select:focus { border-color: var(--accent); background: #fff; outline: none; }
 .dk-susut { font-family: var(--font-mono); color: var(--text-2); font-size: 13px; text-align: right; padding-right: 8px; }
 .dk-actions { display: flex; gap: 4px; white-space: nowrap; }
+.ct-tbl th.r, .ct-tbl td.r { text-align: right; }
+.ct-tbl td { padding: 8px; font-size: 13px; }
+.ct-tbl .mono { font-family: var(--font-mono); }
+.ct-no { font-family: var(--font-mono); font-weight: 700; }
+.ct-sub { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
 
 /* slip editor inputs + print/screen row visibility */
 .slip-in { border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; font-size: 13px; font-family: var(--font-mono); width: 130px; }
