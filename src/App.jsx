@@ -3,6 +3,8 @@ import SectionGate from './components/Gate'
 import Layout from './components/Layout'
 import Home from './pages/Home'
 import FleetHome from './pages/FleetHome'
+import FleetContracts from './pages/FleetContracts'
+import FleetContractDetail from './pages/FleetContractDetail'
 import WarehouseHome from './pages/WarehouseHome'
 import Dashboard from './pages/Dashboard'
 import Queue from './pages/Queue'
@@ -30,7 +32,11 @@ function Workshop() {
 function Fleet() {
   return (
     <Layout section="fleet">
-      <Routes><Route path="/" element={<FleetHome />} /></Routes>
+      <Routes>
+        <Route path="/" element={<FleetHome />} />
+        <Route path="contracts" element={<FleetContracts />} />
+        <Route path="contracts/:id" element={<FleetContractDetail />} />
+      </Routes>
     </Layout>
   )
 }

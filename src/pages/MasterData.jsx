@@ -12,16 +12,18 @@ const STATUS = {
 const ENTITIES = {
   trucks: {
     label: 'Trucks', table: 'trucks', order: 'code',
-    columns: 'id,code,plate,model,fleet_division,status',
+    columns: 'id,code,plate,model,fleet_division,capacity_kg,status',
     statusSet: STATUS.truck,
-    name: r => r.plate, sub: r => [r.fleet_division, r.model].filter(Boolean).join(' · '),
+    name: r => r.plate,
+    sub: r => [r.fleet_division, r.model, r.capacity_kg ? `${Number(r.capacity_kg).toLocaleString()} kg` : ''].filter(Boolean).join(' · '),
     search: r => `${r.code} ${r.plate} ${r.model || ''} ${r.fleet_division || ''}`,
     fields: [
       { key: 'plate', label: 'Plate', type: 'text', required: true },
       { key: 'fleet_division', label: 'Fleet division', type: 'select', options: ['Tangki', 'Gerobak', 'Kantor'] },
       { key: 'model', label: 'Model', type: 'text' },
+      { key: 'capacity_kg', label: 'Capacity (kg)', type: 'number', hint: 'load capacity, informs borongan' },
     ],
-    blank: { plate: '', fleet_division: 'Tangki', model: '', status: 'Active' },
+    blank: { plate: '', fleet_division: 'Tangki', model: '', capacity_kg: '', status: 'Active' },
   },
   drivers: {
     label: 'Drivers', table: 'drivers', order: 'code',
@@ -207,6 +209,7 @@ function EditForm({ cfg, row, isNew, onSave, onCancel }) {
     cfg.fields.forEach(fl => {
       let v = form[fl.key]
       if (typeof v === 'string') { v = v.trim(); if (v === '') v = null }
+      if (fl.type === 'number') v = (v === null || v === '') ? null : Number(v)
       patch[fl.key] = v
     })
     patch.status = form.status
@@ -222,6 +225,9 @@ function EditForm({ cfg, row, isNew, onSave, onCancel }) {
             <label>{fl.label}{fl.required && ' *'}{fl.hint && <span className="hint">{fl.hint}</span>}</label>
             {fl.type === 'text' && (
               <input value={form[fl.key] || ''} onChange={e => set(fl.key, e.target.value)} />
+            )}
+            {fl.type === 'number' && (
+              <input type="number" value={form[fl.key] ?? ''} onChange={e => set(fl.key, e.target.value)} />
             )}
             {fl.type === 'select' && (
               <select value={form[fl.key] || ''} onChange={e => set(fl.key, e.target.value)}>

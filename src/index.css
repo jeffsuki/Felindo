@@ -283,6 +283,42 @@ textarea { resize: vertical; min-height: 72px; }
 .metric .v { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin-top: 3px; letter-spacing: -.01em; }
 .hist-count { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 
+/* ---------- Fleet contracts ---------- */
+.fc-ctrl { font-family: var(--font-mono); font-weight: 700; font-size: 15px; color: var(--ink); background: linear-gradient(#fff,#F1F3F5); border: 1.5px solid var(--ink); border-radius: 4px; padding: 3px 9px; }
+.fc-out { font-family: var(--font-mono); font-size: 12px; color: var(--text-2); font-weight: 600; white-space: nowrap; }
+.fc-info { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); }
+.fc-info b { color: var(--text); font-weight: 600; }
+.crow-head:has(.fc-ctrl) { grid-template-columns: auto 1fr auto auto; }
+
+/* ---------- Fleet delivery edit fields ---------- */
+.fd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.fd-f { display: flex; flex-direction: column; gap: 3px; }
+.fd-f span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.fd-f input { font-size: 13px; padding: 6px 8px; }
+.fd-calc { font-size: 13px; padding: 6px 8px; background: #EEF1F3; border-radius: 6px; font-family: var(--font-mono); }
+.fd-sec { font-family: var(--font-display); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); margin: 14px 0 6px; }
+
+/* ---------- Printable slip ---------- */
+.slip-scrim { position: fixed; inset: 0; background: rgba(27,32,39,.55); display: grid; place-items: center; z-index: 60; padding: 20px; }
+.slip-print { background: #fff; width: 460px; max-width: 100%; padding: 28px 32px; border-radius: 8px; box-shadow: var(--shadow); }
+.slip-h { font-family: var(--font-display); font-weight: 800; font-size: 20px; text-align: center; letter-spacing: .02em; border-bottom: 2px solid var(--ink); padding-bottom: 10px; margin-bottom: 12px; }
+.slip-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 13px; margin-bottom: 14px; }
+.slip-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.slip-tbl td { padding: 6px 4px; border-bottom: 1px solid var(--line-2); }
+.slip-tbl td:last-child { text-align: right; font-family: var(--font-mono); }
+.slip-tbl .slip-total td { border-top: 2px solid var(--ink); border-bottom: none; font-weight: 800; font-size: 15px; padding-top: 10px; }
+.slip-note { font-size: 12px; color: var(--text-2); margin-top: 12px; }
+.slip-sign { display: flex; justify-content: space-between; margin-top: 40px; font-size: 13px; }
+.slip-actions { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 61; }
+
+@media print {
+  body * { visibility: hidden; }
+  .slip-print, .slip-print * { visibility: visible; }
+  .slip-scrim { position: static; background: none; padding: 0; display: block; }
+  .slip-print { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; border-radius: 0; }
+  .no-print { display: none !important; }
+}
+
 .hist-group { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 14px; overflow: hidden; }
 .hist-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line-2); background: #FAFBFC; }
 .hist-head .title { font-family: var(--font-display); font-weight: 700; font-size: 14px; }

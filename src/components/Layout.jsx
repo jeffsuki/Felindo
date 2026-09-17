@@ -12,6 +12,7 @@ const NAVS = {
   ],
   fleet: [
     { to: '/fleet', label: 'Fleet overview', end: true },
+    { to: '/fleet/contracts', label: 'Contracts' },
   ],
   warehouse: [
     { to: '/warehouse', label: 'Warehouse', end: true },
