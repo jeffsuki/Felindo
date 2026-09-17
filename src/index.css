@@ -298,6 +298,23 @@ textarea { resize: vertical; min-height: 72px; }
 .fd-calc { font-size: 13px; padding: 6px 8px; background: #EEF1F3; border-radius: 6px; font-family: var(--font-mono); }
 .fd-sec { font-family: var(--font-display); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); margin: 14px 0 6px; }
 
+/* ---------- Daftar Kontrol editable grid ---------- */
+.dk-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow); }
+.dk-tbl { border-collapse: collapse; width: 100%; min-width: 1040px; }
+.dk-tbl th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; background: #FAFBFC; }
+.dk-tbl td { padding: 2px 4px; border-bottom: 1px solid var(--line-2); vertical-align: middle; }
+.dk-tbl input, .dk-tbl select { border: 1px solid transparent; background: transparent; padding: 6px; font-size: 13px; width: 100%; border-radius: 4px; font-family: inherit; }
+.dk-tbl input:hover, .dk-tbl select:hover { border-color: var(--line); }
+.dk-tbl input:focus, .dk-tbl select:focus { border-color: var(--accent); background: #fff; outline: none; }
+.dk-susut { font-family: var(--font-mono); color: var(--text-2); font-size: 13px; text-align: right; padding-right: 8px; }
+.dk-actions { display: flex; gap: 4px; white-space: nowrap; }
+
+/* slip editor inputs + print/screen row visibility */
+.slip-in { border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; font-size: 13px; font-family: var(--font-mono); width: 130px; }
+.slip-in.sm { width: 60px; }
+.slip-only { display: none; }
+@media print { .slip-only { display: table-row; } .slip-note.slip-only, .slip-sign.slip-only { display: flex; } }
+
 /* ---------- Printable slip ---------- */
 .slip-scrim { position: fixed; inset: 0; background: rgba(27,32,39,.55); display: grid; place-items: center; z-index: 60; padding: 20px; }
 .slip-print { background: #fff; width: 460px; max-width: 100%; padding: 28px 32px; border-radius: 8px; box-shadow: var(--shadow); }
@@ -316,6 +333,8 @@ textarea { resize: vertical; min-height: 72px; }
 .slip-lhead { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; background: #FAFBFC; }
 .slip-lrow .r { text-align: right; }
 .slip-lrow .mono { font-family: var(--font-mono); }
+.slip-lclick { cursor: pointer; }
+.slip-lclick:hover { background: var(--accent-wash); }
 @media (max-width: 760px) { .slip-lrow { grid-template-columns: 1fr auto; } .slip-lrow span:nth-child(3),.slip-lrow span:nth-child(5) { display: none; } }
 
 @media print {
