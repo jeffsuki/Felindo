@@ -16,6 +16,7 @@ const NAVS = {
     { to: '/fleet/slips', label: 'Slip Uang Jalan' },
     { to: '/fleet/tembak', label: 'Uang Tembak' },
     { to: '/fleet/reports', label: 'Daily Report' },
+    { to: '/fleet/history', label: 'Route History' },
     { to: '/fleet/registers', label: 'Clients & Places' },
   ],
   warehouse: [

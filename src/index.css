@@ -364,6 +364,11 @@ textarea { resize: vertical; min-height: 72px; }
 .lb-tbl .lb-total td { font-weight: 700; border-top: 2px solid var(--ink); }
 .lb-sign { display: flex; justify-content: space-between; margin-top: 28px; font-size: 12px; text-align: center; }
 .lb-sign > div { flex: 1; }
+
+/* route-history chips */
+.rh-routes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.rh-chip { font-size: 12px; background: #EEF1F3; border-radius: 100px; padding: 4px 12px; color: var(--text-2); }
+.rh-chip b { color: var(--text); }
 @media print {
   body * { visibility: hidden; }
   .report-print, .report-print * { visibility: visible; }

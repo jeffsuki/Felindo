@@ -135,6 +135,7 @@ function ContractForm({ clients, locations, initial, onSave, onCancel }) {
     contract_no: initial?.contract_no || '', do_contract_no: initial?.do_contract_no || '',
     client: initial?.client || '', origin: initial?.origin || '', destination: initial?.destination || '',
     commodity: initial?.commodity || 'CPO', quantity_kg: initial?.quantity_kg ?? '',
+    distance_km: initial?.distance_km ?? '',
     susut_pct: initial?.susut_tolerance != null ? String(Number(initial.susut_tolerance) * 100) : '0.2',
     jenis_truk: initial?.jenis_truk || 'Tangki', note: initial?.note || '',
   })
@@ -153,6 +154,7 @@ function ContractForm({ clients, locations, initial, onSave, onCancel }) {
       contract_no: f.contract_no.trim() || null, do_contract_no: f.do_contract_no.trim() || null,
       client: f.client || null, origin: f.origin || null, destination: f.destination || null,
       commodity: f.commodity.trim() || null, quantity_kg: f.quantity_kg === '' ? null : Number(f.quantity_kg),
+      distance_km: f.distance_km === '' ? null : Number(f.distance_km),
       susut_tolerance: f.susut_pct === '' ? null : Number(f.susut_pct) / 100,
       jenis_truk: f.jenis_truk || null, note: f.note.trim() || null,
     })
@@ -181,6 +183,10 @@ function ContractForm({ clients, locations, initial, onSave, onCancel }) {
       <div className="row2">
         <div className="field"><label>Commodity</label><input value={f.commodity} onChange={e => set('commodity', e.target.value)} /></div>
         <div className="field"><label>Quantity (kg)</label><input type="number" value={f.quantity_kg} onChange={e => set('quantity_kg', e.target.value)} placeholder="250000" /></div>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Est. distance — one-way (km)<span className="hint">actual travelled = ×2 (round trip)</span></label><input type="number" value={f.distance_km} onChange={e => set('distance_km', e.target.value)} /></div>
+        <div className="field"></div>
       </div>
       <div className="row2">
         <div className="field"><label>Toleransi susut (%)<span className="hint">e.g. 0.2 for 0.2%</span></label><input type="number" step="0.01" value={f.susut_pct} onChange={e => set('susut_pct', e.target.value)} /></div>
