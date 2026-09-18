@@ -2,9 +2,10 @@ import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Spinner, Empty, Badge, useToast } from '../components/ui'
+import { NumInput } from '../components/NumInput'
 
 const JENIS = ['Susut', 'Ganti Ban', 'Ganti Spare Part', 'Lainnya']
-const rp = n => (n === null || n === undefined || n === '') ? 'Rp 0' : 'Rp ' + Number(n).toLocaleString()
+const rp = n => (n === null || n === undefined || n === '') ? 'Rp 0' : 'Rp ' + Number(n).toLocaleString('id-ID')
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const susutOf = d => (d.muatan != null && d.bongkar != null) ? Number(d.muatan) - Number(d.bongkar) : null
@@ -184,8 +185,8 @@ function ReleaseTable({ trips, onConfirm, onCancel }) {
                   <tr key={d.id}>
                     <td>{fmtDate(d.tanggal)}</td>
                     <td>{d.contract?.origin || '—'} → {d.contract?.destination || '—'}</td>
-                    <td><input type="number" style={{ width: 120, textAlign: 'right' }} value={f[d.id].uang} onChange={e => set(d.id, 'uang', e.target.value)} /></td>
-                    <td><input type="number" style={{ width: 120, textAlign: 'right' }} value={f[d.id].potongan} onChange={e => set(d.id, 'potongan', e.target.value)} /></td>
+                    <td><NumInput style={{ width: 120, textAlign: 'right' }} value={f[d.id].uang} onChange={n => set(d.id, 'uang', n)} onCommit={n => set(d.id, 'uang', n)} /></td>
+                    <td><NumInput style={{ width: 120, textAlign: 'right' }} value={f[d.id].potongan} onChange={n => set(d.id, 'potongan', n)} onCommit={n => set(d.id, 'potongan', n)} /></td>
                     <td><select value={f[d.id].jenis} onChange={e => set(d.id, 'jenis', e.target.value)}><option value="">—</option>{JENIS.map(j => <option key={j} value={j}>{j}</option>)}</select></td>
                     <td className="r mono" style={{ fontWeight: 700 }}>{rp(sisa)}</td>
                   </tr>

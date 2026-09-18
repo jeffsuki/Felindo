@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Spinner, Empty, Badge, useToast } from '../components/ui'
 import SearchSelect from '../components/SearchSelect'
+import { NumInput } from '../components/NumInput'
 
-const kg = n => (n === null || n === undefined || n === '') ? '—' : Number(n).toLocaleString()
+const kg = n => (n === null || n === undefined || n === '') ? '—' : Number(n).toLocaleString('id-ID')
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 
 function contractStatus(c, t) {
@@ -182,10 +183,10 @@ function ContractForm({ clients, locations, initial, onSave, onCancel }) {
       </div>
       <div className="row2">
         <div className="field"><label>Commodity</label><input value={f.commodity} onChange={e => set('commodity', e.target.value)} /></div>
-        <div className="field"><label>Quantity (kg)</label><input type="number" value={f.quantity_kg} onChange={e => set('quantity_kg', e.target.value)} placeholder="250000" /></div>
+        <div className="field"><label>Quantity (kg)</label><NumInput value={f.quantity_kg} onChange={n => set('quantity_kg', n)} onCommit={n => set('quantity_kg', n)} placeholder="250.000" /></div>
       </div>
       <div className="row2">
-        <div className="field"><label>Est. distance — one-way (km)<span className="hint">actual travelled = ×2 (round trip)</span></label><input type="number" value={f.distance_km} onChange={e => set('distance_km', e.target.value)} /></div>
+        <div className="field"><label>Est. distance — one-way (km)<span className="hint">actual travelled = ×2 (round trip)</span></label><NumInput value={f.distance_km} onChange={n => set('distance_km', n)} onCommit={n => set('distance_km', n)} /></div>
         <div className="field"></div>
       </div>
       <div className="row2">

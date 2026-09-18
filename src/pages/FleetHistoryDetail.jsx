@@ -5,7 +5,7 @@ import { Spinner, Empty, useToast } from '../components/ui'
 
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const susutOf = d => (d.muatan != null && d.bongkar != null) ? Number(d.muatan) - Number(d.bongkar) : null
-const nf = n => (n === null || n === undefined || n === '') ? '—' : Number(n).toLocaleString()
+const nf = n => (n === null || n === undefined || n === '') ? '—' : Number(n).toLocaleString('id-ID')
 const kmOf = d => d.contract?.distance_km != null ? Number(d.contract.distance_km) * 2 : null   // round trip
 
 export default function FleetHistoryDetail() {
@@ -63,7 +63,7 @@ export default function FleetHistoryDetail() {
         <div className="metrics">
           <div className="metric"><div className="k">Total routes</div><div className="v" style={{ fontSize: 20 }}>{trips.length}</div></div>
           <div className="metric"><div className="k">Distinct routes</div><div className="v" style={{ fontSize: 20 }}>{routeCounts.length}</div></div>
-          <div className="metric"><div className="k">Total Km travelled</div><div className="v" style={{ fontSize: 20 }}>{totalKm.toLocaleString()} km</div></div>
+          <div className="metric"><div className="k">Total Km travelled</div><div className="v" style={{ fontSize: 20 }}>{totalKm.toLocaleString('id-ID')} km</div></div>
         </div>
 
         {trips.length === 0 ? <Empty title="No trips">Nothing in this range.</Empty> : (
@@ -87,12 +87,12 @@ export default function FleetHistoryDetail() {
                         <td className="mono">{d.contract?.control_no || '—'}</td>
                         <td className={isTruck ? '' : 'mono'}>{isTruck ? (d.driver_name || '—') : (d.plate || '—')}</td>
                         <td className="r mono">{nf(d.muatan)}</td>
-                        <td className="r mono">{s != null ? s.toLocaleString() : '—'}</td>
-                        <td className="r mono">{km != null ? km.toLocaleString() : '—'}</td>
+                        <td className="r mono">{s != null ? Number(s).toLocaleString('id-ID') : '—'}</td>
+                        <td className="r mono">{km != null ? km.toLocaleString('id-ID') : '—'}</td>
                       </tr>
                     )
                   })}
-                  <tr className="lb-total"><td colSpan={6} className="r">Total Km</td><td className="r mono">{totalKm.toLocaleString()}</td></tr>
+                  <tr className="lb-total"><td colSpan={6} className="r">Total Km</td><td className="r mono">{totalKm.toLocaleString('id-ID')}</td></tr>
                 </tbody>
               </table>
             </div>

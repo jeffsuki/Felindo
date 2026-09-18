@@ -2,10 +2,11 @@ import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Spinner, Empty, Badge, useToast } from '../components/ui'
+import { NumInput, fmtId } from '../components/NumInput'
 
 const num = v => (v === null || v === undefined || v === '') ? null : Number(v)
-const kg = n => (n === null || n === undefined || n === '') ? '—' : Number(n).toLocaleString() + ' kg'
-const rp = n => (n === null || n === undefined || n === '') ? 'Rp 0' : 'Rp ' + Number(n).toLocaleString()
+const kg = n => (n === null || n === undefined || n === '') ? '—' : Number(n).toLocaleString('id-ID') + ' kg'
+const rp = n => (n === null || n === undefined || n === '') ? 'Rp 0' : 'Rp ' + Number(n).toLocaleString('id-ID')
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) : '—'
 const netOf = d => Number(d.borongan || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0) - Number(d.potongan_lain || 0)
 
@@ -142,17 +143,17 @@ export default function FleetContractDetail() {
                         {d.driver_name && !drivers.some(x => x.name === d.driver_name) && <option value={d.driver_name}>{d.driver_name}</option>}
                       </select>
                     </td>
-                    <td><input type="number" value={d.estimasi_muat ?? ''} onChange={e => setCell(d.id, 'estimasi_muat', e.target.value)} onBlur={e => saveField(d.id, 'estimasi_muat', e.target.value)} /></td>
+                    <td><NumInput value={d.estimasi_muat} onChange={n => setCell(d.id, 'estimasi_muat', n)} onCommit={n => saveField(d.id, 'estimasi_muat', n)} /></td>
                     <td><input type="date" value={d.tanggal_muat || ''} onChange={e => setCell(d.id, 'tanggal_muat', e.target.value)} onBlur={e => saveField(d.id, 'tanggal_muat', e.target.value)} /></td>
-                    <td><input type="number" value={d.muatan ?? ''} onChange={e => setCell(d.id, 'muatan', e.target.value)} onBlur={e => saveField(d.id, 'muatan', e.target.value)} /></td>
+                    <td><NumInput value={d.muatan} onChange={n => setCell(d.id, 'muatan', n)} onCommit={n => saveField(d.id, 'muatan', n)} /></td>
                     <td><input type="date" value={d.tanggal_bongkar || ''} onChange={e => setCell(d.id, 'tanggal_bongkar', e.target.value)} onBlur={e => saveField(d.id, 'tanggal_bongkar', e.target.value)} /></td>
-                    <td><input type="number" value={d.bongkar ?? ''} onChange={e => setCell(d.id, 'bongkar', e.target.value)} onBlur={e => saveField(d.id, 'bongkar', e.target.value)} /></td>
-                    <td className="dk-susut" style={rowOver ? { color: 'var(--urgent)', fontWeight: 700 } : {}}>{s != null ? s.toLocaleString() : '—'}</td>
+                    <td><NumInput value={d.bongkar} onChange={n => setCell(d.id, 'bongkar', n)} onCommit={n => saveField(d.id, 'bongkar', n)} /></td>
+                    <td className="dk-susut" style={rowOver ? { color: 'var(--urgent)', fontWeight: 700 } : {}}>{s != null ? fmtId(s) : '—'}</td>
                     <td className="dk-susut" style={rowOver ? { color: 'var(--urgent)', fontWeight: 700 } : {}}>{(() => {
                       const tol = Number(c.susut_tolerance ?? 0)
                       if (s == null || !(tol > 0)) return '—'
                       const claim = Math.max(s - tol * Number(d.muatan), 0)
-                      return claim > 0 ? claim.toLocaleString() : '0'
+                      return claim > 0 ? fmtId(claim) : '0'
                     })()}</td>
                     <td className="dk-actions">
                       <button className="btn ghost sm void-btn" onClick={() => { if (confirm('Remove this delivery?')) delRow(d.id) }}>✕</button>

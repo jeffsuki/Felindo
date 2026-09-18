@@ -2,11 +2,12 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Spinner, Empty, useToast } from '../components/ui'
 import SearchSelect from '../components/SearchSelect'
+import { NumInput, fmtId } from '../components/NumInput'
 import { checkPassword, gateEnabled } from '../components/Gate'
 
 const num = v => (v === null || v === undefined || v === '') ? null : Number(v)
 const JENIS_POT = ['Susut', 'Ganti Ban', 'Ganti Spare Part', 'Lainnya']
-const rp = n => (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString()
+const rp = n => (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString('id-ID')
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const netOf = d => Number(d.borongan || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
 const totalBbm = d => (Number(d.bbm_liter || 0) * Number(d.price_per_liter || 0))
@@ -153,12 +154,12 @@ export default function FleetSlips() {
                         <td><select disabled={locked} value={d.contract_id || ''} onChange={e => saveContractLink(d.id, e.target.value)}>{contracts.map(c => <option key={c.id} value={c.id}>{c.control_no}</option>)}</select></td>
                         <td className="ro">{d.contract?.origin || '—'}</td>
                         <td className="ro">{d.contract?.destination || '—'}</td>
-                        <td><input type="number" disabled={locked} value={d.borongan ?? ''} onChange={e => setCell(d.id, 'borongan', e.target.value)} onBlur={e => saveField(d.id, 'borongan', e.target.value)} /></td>
-                        <td><input type="number" disabled={locked} value={d.bbm_liter ?? ''} onChange={e => setCell(d.id, 'bbm_liter', e.target.value)} onBlur={e => saveBbm(d.id, 'bbm_liter', e.target.value)} /></td>
-                        <td><input type="number" disabled={locked} value={d.price_per_liter ?? ''} onChange={e => setCell(d.id, 'price_per_liter', e.target.value)} onBlur={e => saveBbm(d.id, 'price_per_liter', e.target.value)} /></td>
-                        <td className="mono ro r">{totalBbm(d) ? totalBbm(d).toLocaleString() : '—'}</td>
-                        <td><input type="number" disabled={locked} value={d.potongan_susut ?? ''} onChange={e => setCell(d.id, 'potongan_susut', e.target.value)} onBlur={e => saveField(d.id, 'potongan_susut', e.target.value)} /></td>
-                        <td><input type="number" disabled={locked} value={d.potongan_pm ?? ''} onChange={e => setCell(d.id, 'potongan_pm', e.target.value)} onBlur={e => saveField(d.id, 'potongan_pm', e.target.value)} /></td>
+                        <td><NumInput disabled={locked} value={d.borongan} onChange={n => setCell(d.id, 'borongan', n)} onCommit={n => saveField(d.id, 'borongan', n)} /></td>
+                        <td><NumInput disabled={locked} value={d.bbm_liter} onChange={n => setCell(d.id, 'bbm_liter', n)} onCommit={n => saveBbm(d.id, 'bbm_liter', n)} /></td>
+                        <td><NumInput disabled={locked} value={d.price_per_liter} onChange={n => setCell(d.id, 'price_per_liter', n)} onCommit={n => saveBbm(d.id, 'price_per_liter', n)} /></td>
+                        <td className="mono ro r">{totalBbm(d) ? fmtId(totalBbm(d)) : '—'}</td>
+                        <td><NumInput disabled={locked} value={d.potongan_susut} onChange={n => setCell(d.id, 'potongan_susut', n)} onCommit={n => saveField(d.id, 'potongan_susut', n)} /></td>
+                        <td><NumInput disabled={locked} value={d.potongan_pm} onChange={n => setCell(d.id, 'potongan_pm', n)} onCommit={n => saveField(d.id, 'potongan_pm', n)} /></td>
                         <td><select disabled={locked} value={d.jenis_potongan || ''} onChange={e => { setCell(d.id, 'jenis_potongan', e.target.value); saveField(d.id, 'jenis_potongan', e.target.value) }}><option value="">—</option>{JENIS_POT.map(j => <option key={j} value={j}>{j}</option>)}</select></td>
                         <td className="mono ro r" style={{ fontWeight: 700 }}>{isFilled(d) ? rp(netOf(d)) : '—'}</td>
                         <td><input disabled={locked} value={d.keterangan || ''} onChange={e => setCell(d.id, 'keterangan', e.target.value)} onBlur={e => saveField(d.id, 'keterangan', e.target.value)} /></td>

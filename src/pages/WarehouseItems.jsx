@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Spinner, Empty, useToast } from '../components/ui'
+import { NumInput } from '../components/NumInput'
 
 const NUMF = ['unit_cost']
 
@@ -91,7 +92,7 @@ export default function WarehouseItems() {
                     <td><input value={r.system || ''} onChange={e => setCell(r.id, 'system', e.target.value)} onBlur={e => saveField(r.id, 'system', e.target.value)} /></td>
                     <td><input value={r.part_type || ''} onChange={e => setCell(r.id, 'part_type', e.target.value)} onBlur={e => saveField(r.id, 'part_type', e.target.value)} /></td>
                     <td><input value={r.oem_no || ''} onChange={e => setCell(r.id, 'oem_no', e.target.value)} onBlur={e => saveField(r.id, 'oem_no', e.target.value)} /></td>
-                    <td><input type="number" value={r.unit_cost ?? ''} onChange={e => setCell(r.id, 'unit_cost', e.target.value)} onBlur={e => saveField(r.id, 'unit_cost', e.target.value)} /></td>
+                    <td><NumInput value={r.unit_cost} onChange={n => setCell(r.id, 'unit_cost', n)} onCommit={n => saveField(r.id, 'unit_cost', n)} /></td>
                     <td><input value={r.behaviour || ''} onChange={e => setCell(r.id, 'behaviour', e.target.value)} onBlur={e => saveField(r.id, 'behaviour', e.target.value)} /></td>
                     <td><input value={r.scrap_category || ''} onChange={e => setCell(r.id, 'scrap_category', e.target.value)} onBlur={e => saveField(r.id, 'scrap_category', e.target.value)} /></td>
                     <td><input value={r.note || ''} onChange={e => setCell(r.id, 'note', e.target.value)} onBlur={e => saveField(r.id, 'note', e.target.value)} /></td>

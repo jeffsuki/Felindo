@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Badge, Spinner, Empty, useToast } from '../components/ui'
+import { NumInput } from '../components/NumInput'
 
 // Per-entity config: table, fields, status options, how to render a row
 const STATUS = {
@@ -238,7 +239,7 @@ function EditForm({ cfg, row, isNew, onSave, onCancel }) {
               <input value={form[fl.key] || ''} onChange={e => set(fl.key, e.target.value)} />
             )}
             {fl.type === 'number' && (
-              <input type="number" value={form[fl.key] ?? ''} onChange={e => set(fl.key, e.target.value)} />
+              <NumInput value={form[fl.key] ?? ''} onChange={v => set(fl.key, v)} onCommit={v => set(fl.key, v)} />
             )}
             {fl.type === 'select' && (
               <select value={form[fl.key] || ''} onChange={e => set(fl.key, e.target.value)}>
