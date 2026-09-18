@@ -356,12 +356,12 @@ textarea { resize: vertical; min-height: 72px; }
 
 /* Laporan Borongan detailed table */
 .lb-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
-.lb-tbl th { border: 1px solid var(--ink); padding: 4px 6px; font-size: 10px; text-transform: uppercase; background: #F1F3F5; text-align: left; }
+.lb-tbl th { border: 1px solid var(--ink); padding: 4px 6px; font-size: 10px; text-transform: uppercase; text-align: left; }
 .lb-tbl th.r { text-align: right; } .lb-tbl th.c { text-align: center; }
 .lb-tbl td { border: 1px solid var(--line); padding: 4px 6px; }
 .lb-tbl td.r { text-align: right; } .lb-tbl td.mono { font-family: var(--font-mono); }
-.lb-tbl .lb-group td { background: var(--ink); color: #fff; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
-.lb-tbl .lb-total td { font-weight: 800; border-top: 2px solid var(--ink); background: #FAFBFC; }
+.lb-tbl .lb-group td { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; border-top: 2px solid var(--ink); }
+.lb-tbl .lb-total td { font-weight: 700; border-top: 2px solid var(--ink); }
 .lb-sign { display: flex; justify-content: space-between; margin-top: 28px; font-size: 12px; text-align: center; }
 .lb-sign > div { flex: 1; }
 @media print {

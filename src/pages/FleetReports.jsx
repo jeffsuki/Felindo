@@ -5,7 +5,7 @@ import { Spinner, Empty, useToast } from '../components/ui'
 const nf = n => (n === null || n === undefined || n === '' || Number(n) === 0) ? '' : Number(n).toLocaleString()
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
 const fmtDay = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'long', year: 'numeric' }) : ''
-const ujNet = d => num(d.borongan) - num(d.bbm_rupiah) - num(d.potongan_susut) - num(d.potongan_pm) - num(d.potongan_lain)
+const ujNet = d => num(d.borongan) - num(d.bbm_rupiah) - num(d.potongan_susut) - num(d.potongan_pm)
 const tbNet = d => num(d.tembak_amount) - num(d.tembak_potongan)
 const rp = n => 'Rp ' + Number(n || 0).toLocaleString()
 
@@ -19,7 +19,7 @@ export default function FleetReports() {
   useEffect(() => {
     if (!isConfigured) return
     setLoading(true)
-    const sel = 'id,plate,driver_name,muatan,borongan,bbm_liter,price_per_liter,bbm_rupiah,potongan_susut,potongan_pm,potongan_lain,keterangan,tembak_amount,tembak_potongan,tembak_jenis_potongan,contract:fleet_contracts(control_no,origin,destination)'
+    const sel = 'id,plate,driver_name,muatan,borongan,bbm_liter,price_per_liter,bbm_rupiah,potongan_susut,potongan_pm,potongan_lain,jenis_potongan,keterangan,tembak_amount,tembak_potongan,tembak_jenis_potongan,contract:fleet_contracts(control_no,origin,destination)'
     Promise.all([
       supabase.from('fleet_deliveries').select(sel).eq('tanggal', date).not('borongan', 'is', null),
       supabase.from('fleet_deliveries').select(sel).eq('tembak_released_date', date),
@@ -60,7 +60,7 @@ export default function FleetReports() {
                   <th rowSpan={2} className="r">Borongan</th><th colSpan={3} className="c">BBM</th>
                   <th colSpan={3} className="c">Potongan</th><th rowSpan={2} className="r">Sisa</th><th rowSpan={2}>Keterangan</th>
                 </tr>
-                <tr><th className="r">Ltr</th><th className="r">BBM/L</th><th className="r">Total BBM</th><th className="r">Susut</th><th className="r">PM</th><th className="r">Lain</th></tr>
+                <tr><th className="r">Ltr</th><th className="r">BBM/L</th><th className="r">Total BBM</th><th className="r">Susut</th><th className="r">PM</th><th>Jenis Potongan</th></tr>
               </thead>
               <tbody>
                 {ujGroups.map(([r, list]) => (
@@ -71,7 +71,7 @@ export default function FleetReports() {
                         <td>{i + 1}</td><td className="mono">{d.plate || '—'}</td><td>{d.driver_name || '—'}</td>
                         <td className="r mono">{nf(d.muatan)}</td><td className="r mono">{nf(d.borongan)}</td>
                         <td className="r mono">{nf(d.bbm_liter)}</td><td className="r mono">{nf(d.price_per_liter)}</td><td className="r mono">{nf(d.bbm_rupiah)}</td>
-                        <td className="r mono">{nf(d.potongan_susut)}</td><td className="r mono">{nf(d.potongan_pm)}</td><td className="r mono">{nf(d.potongan_lain)}</td>
+                        <td className="r mono">{nf(d.potongan_susut)}</td><td className="r mono">{nf(d.potongan_pm)}</td><td>{d.jenis_potongan || ''}</td>
                         <td className="r mono">{nf(ujNet(d))}</td><td>{d.keterangan || ''}</td>
                       </tr>
                     ))}
@@ -80,7 +80,7 @@ export default function FleetReports() {
                 <tr className="lb-total">
                   <td colSpan={3}>Total</td><td className="r mono">{nf(T.tonase)}</td><td className="r mono">{nf(T.borongan)}</td>
                   <td className="r mono">{nf(T.ltr)}</td><td></td><td className="r mono">{nf(T.bbm)}</td>
-                  <td className="r mono">{nf(T.susut)}</td><td className="r mono">{nf(T.pm)}</td><td className="r mono">{nf(T.lain)}</td>
+                  <td className="r mono">{nf(T.susut)}</td><td className="r mono">{nf(T.pm)}</td><td></td>
                   <td className="r mono">{nf(T.sisa)}</td><td></td>
                 </tr>
               </tbody>

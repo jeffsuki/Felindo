@@ -5,6 +5,7 @@ import SearchSelect from '../components/SearchSelect'
 import { checkPassword, gateEnabled } from '../components/Gate'
 
 const num = v => (v === null || v === undefined || v === '') ? null : Number(v)
+const JENIS_POT = ['Susut', 'Ganti Ban', 'Ganti Spare Part', 'Lainnya']
 const rp = n => (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString()
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const netOf = d => Number(d.borongan || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
@@ -137,7 +138,7 @@ export default function FleetSlips() {
                   <tr>
                     <th>Tanggal</th><th>Plat</th><th>Supir</th><th>No. Kontrol</th><th>Asal</th><th>Tujuan</th>
                     <th className="r">Borongan</th><th className="r">BBM L</th><th className="r">Price/L</th><th className="r">Total BBM</th>
-                    <th className="r">Pot Susut</th><th className="r">Pot PM</th>
+                    <th className="r">Pot Susut</th><th className="r">Pot PM</th><th>Jenis Potongan</th>
                     <th className="r">Sisa</th><th>Keterangan</th><th></th>
                   </tr>
                 </thead>
@@ -158,6 +159,7 @@ export default function FleetSlips() {
                         <td className="mono ro r">{totalBbm(d) ? totalBbm(d).toLocaleString() : '—'}</td>
                         <td><input type="number" disabled={locked} value={d.potongan_susut ?? ''} onChange={e => setCell(d.id, 'potongan_susut', e.target.value)} onBlur={e => saveField(d.id, 'potongan_susut', e.target.value)} /></td>
                         <td><input type="number" disabled={locked} value={d.potongan_pm ?? ''} onChange={e => setCell(d.id, 'potongan_pm', e.target.value)} onBlur={e => saveField(d.id, 'potongan_pm', e.target.value)} /></td>
+                        <td><select disabled={locked} value={d.jenis_potongan || ''} onChange={e => { setCell(d.id, 'jenis_potongan', e.target.value); saveField(d.id, 'jenis_potongan', e.target.value) }}><option value="">—</option>{JENIS_POT.map(j => <option key={j} value={j}>{j}</option>)}</select></td>
                         <td className="mono ro r" style={{ fontWeight: 700 }}>{isFilled(d) ? rp(netOf(d)) : '—'}</td>
                         <td><input disabled={locked} value={d.keterangan || ''} onChange={e => setCell(d.id, 'keterangan', e.target.value)} onBlur={e => saveField(d.id, 'keterangan', e.target.value)} /></td>
                         <td className="dk-actions">
