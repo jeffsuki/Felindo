@@ -353,6 +353,17 @@ textarea { resize: vertical; min-height: 72px; }
 .rep-total { margin-top: 20px; border-top: 2px solid var(--ink); padding-top: 12px; max-width: 340px; margin-left: auto; }
 .rep-total > div { display: flex; justify-content: space-between; padding: 3px 0; font-size: 14px; }
 .rep-total .grand { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 8px; font-size: 16px; font-weight: 800; }
+
+/* Laporan Borongan detailed table */
+.lb-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.lb-tbl th { border: 1px solid var(--ink); padding: 4px 6px; font-size: 10px; text-transform: uppercase; background: #F1F3F5; text-align: left; }
+.lb-tbl th.r { text-align: right; } .lb-tbl th.c { text-align: center; }
+.lb-tbl td { border: 1px solid var(--line); padding: 4px 6px; }
+.lb-tbl td.r { text-align: right; } .lb-tbl td.mono { font-family: var(--font-mono); }
+.lb-tbl .lb-group td { background: var(--ink); color: #fff; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+.lb-tbl .lb-total td { font-weight: 800; border-top: 2px solid var(--ink); background: #FAFBFC; }
+.lb-sign { display: flex; justify-content: space-between; margin-top: 28px; font-size: 12px; text-align: center; }
+.lb-sign > div { flex: 1; }
 @media print {
   body * { visibility: hidden; }
   .report-print, .report-print * { visibility: visible; }
