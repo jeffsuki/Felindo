@@ -36,10 +36,15 @@ export default function FleetContractDetail() {
   useEffect(() => { load() }, [id])
 
   const totals = useMemo(() => {
-    const t = { muatan: 0, bongkar: 0, susut: 0, committed: 0 }
+    const t = { muatan: 0, bongkar: 0, susut: 0, committed: 0, claim: 0 }
+    const tol = Number(c?.susut_tolerance ?? 0)
     for (const d of rows) {
       t.muatan += Number(d.muatan || 0); t.bongkar += Number(d.bongkar || 0)
-      if (d.muatan != null && d.muatan !== '' && d.bongkar != null && d.bongkar !== '') t.susut += Number(d.muatan) - Number(d.bongkar)
+      if (d.muatan != null && d.muatan !== '' && d.bongkar != null && d.bongkar !== '') {
+        const s = Number(d.muatan) - Number(d.bongkar)
+        t.susut += s
+        if (tol > 0) t.claim += Math.max(s - tol * Number(d.muatan), 0)
+      }
       t.committed += Number(d.muatan ?? d.estimasi_muat ?? 0)
     }
     t.outstanding = Math.max(Number(c?.quantity_kg || 0) - t.committed, 0)
@@ -93,6 +98,7 @@ export default function FleetContractDetail() {
           <div className="metric"><div className="k">Outstanding</div><div className="v" style={{ fontSize: 18 }}>{kg(totals.outstanding)}</div></div>
           <div className="metric"><div className="k">Deliveries</div><div className="v" style={{ fontSize: 18 }}>{rows.length}</div></div>
           <div className="metric"><div className="k">Total Susut</div><div className="v" style={{ fontSize: 18, color: overTol ? 'var(--urgent)' : undefined }}>{kg(totals.susut)}{overTol && ' ⚠'}</div></div>
+          <div className="metric"><div className="k">Claim Susut</div><div className="v" style={{ fontSize: 18, color: totals.claim > 0 ? 'var(--urgent)' : undefined }}>{kg(totals.claim)}</div></div>
         </div>
 
         <div className="dk-wrap">
@@ -109,12 +115,13 @@ export default function FleetContractDetail() {
                 <th style={{ width: 120 }}>Tgl bongkar</th>
                 <th style={{ width: 100 }}>Bongkar</th>
                 <th style={{ width: 90 }}>Susut</th>
+                <th style={{ width: 100 }}>Claim susut</th>
                 <th style={{ width: 120 }}></th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={11} style={{ padding: 20, textAlign: 'center', color: 'var(--muted)' }}>No deliveries yet — add a row below.</td></tr>
+                <tr><td colSpan={12} style={{ padding: 20, textAlign: 'center', color: 'var(--muted)' }}>No deliveries yet — add a row below.</td></tr>
               )}
               {rows.map(d => {
                 const s = (d.muatan != null && d.muatan !== '' && d.bongkar != null && d.bongkar !== '') ? Number(d.muatan) - Number(d.bongkar) : null
@@ -142,6 +149,12 @@ export default function FleetContractDetail() {
                     <td><input type="date" value={d.tanggal_bongkar || ''} onChange={e => setCell(d.id, 'tanggal_bongkar', e.target.value)} onBlur={e => saveField(d.id, 'tanggal_bongkar', e.target.value)} /></td>
                     <td><input type="number" value={d.bongkar ?? ''} onChange={e => setCell(d.id, 'bongkar', e.target.value)} onBlur={e => saveField(d.id, 'bongkar', e.target.value)} /></td>
                     <td className="dk-susut" style={rowOver ? { color: 'var(--urgent)', fontWeight: 700 } : {}}>{s != null ? s.toLocaleString() : '—'}</td>
+                    <td className="dk-susut" style={rowOver ? { color: 'var(--urgent)', fontWeight: 700 } : {}}>{(() => {
+                      const tol = Number(c.susut_tolerance ?? 0)
+                      if (s == null || !(tol > 0)) return '—'
+                      const claim = Math.max(s - tol * Number(d.muatan), 0)
+                      return claim > 0 ? claim.toLocaleString() : '0'
+                    })()}</td>
                     <td className="dk-actions">
                       <button className="btn ghost sm void-btn" onClick={() => { if (confirm('Remove this delivery?')) delRow(d.id) }}>✕</button>
                     </td>

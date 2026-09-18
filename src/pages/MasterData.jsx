@@ -4,8 +4,8 @@ import { Badge, Spinner, Empty, useToast } from '../components/ui'
 
 // Per-entity config: table, fields, status options, how to render a row
 const STATUS = {
-  person: ['Active', 'Resigned', 'Dismissed', 'On leave'],
-  truck:  ['Active', 'Sold', 'Scrapped', 'Off-road'],
+  person: ['Active', 'Inactive', 'Resigned', 'Dismissed', 'On leave'],
+  truck:  ['Active', 'Inactive', 'Sold', 'Scrapped', 'Off-road'],
   vendor: ['Active', 'Inactive', 'Blacklisted'],
 }
 
@@ -133,6 +133,12 @@ function EntityManager({ cfg }) {
     setEditing(null)
     load()
   }
+  async function toggleActive(r) {
+    const next = r.status === 'Active' ? 'Inactive' : 'Active'
+    const { error } = await supabase.from(cfg.table).update({ status: next }).eq('id', r.id)
+    if (error) return show(error.message, true)
+    load()
+  }
 
   if (loading) return <Spinner label={`Loading ${cfg.label.toLowerCase()}…`} />
 
@@ -173,6 +179,11 @@ function EntityManager({ cfg }) {
                   {cfg.sub(r) && <div className="md-sub">{cfg.sub(r)}</div>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <button className={'md-toggle' + (r.status === 'Active' ? ' on' : '')}
+                    title={r.status === 'Active' ? 'Set inactive' : 'Set active'}
+                    onClick={() => toggleActive(r)}>
+                    <span className="knob" />
+                  </button>
                   <Badge tone={r.status === 'Active' ? 'ok' : 'muted'}>{r.status}</Badge>
                   <button className="btn ghost sm" onClick={() => setEditing(editing === r.id ? null : r.id)}>
                     {editing === r.id ? 'Close' : 'Edit'}

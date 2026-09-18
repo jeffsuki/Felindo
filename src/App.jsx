@@ -8,6 +8,7 @@ import FleetContractDetail from './pages/FleetContractDetail'
 import FleetRegisters from './pages/FleetRegisters'
 import FleetSlips from './pages/FleetSlips'
 import WarehouseHome from './pages/WarehouseHome'
+import WarehouseItems from './pages/WarehouseItems'
 import Dashboard from './pages/Dashboard'
 import Queue from './pages/Queue'
 import Triage from './pages/Triage'
@@ -48,7 +49,7 @@ function Fleet() {
 function Warehouse() {
   return (
     <Layout section="warehouse">
-      <Routes><Route path="/" element={<WarehouseHome />} /></Routes>
+      <Routes><Route path="/" element={<WarehouseItems />} /></Routes>
     </Layout>
   )
 }

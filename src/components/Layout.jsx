@@ -17,7 +17,7 @@ const NAVS = {
     { to: '/fleet/registers', label: 'Clients & Places' },
   ],
   warehouse: [
-    { to: '/warehouse', label: 'Warehouse', end: true },
+    { to: '/warehouse', label: 'Items', end: true },
   ],
   master: [
     { to: '/master', label: 'Master data', end: true },
