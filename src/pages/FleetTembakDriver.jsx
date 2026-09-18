@@ -57,7 +57,7 @@ export default function FleetTembakDriver() {
   }
   async function confirmRelease(fills) {
     const today = new Date().toISOString().slice(0, 10)
-    const { data: batch, error } = await supabase.from('tembak_releases').insert({ driver_name: driver, released_date: today }).select('id,release_no').single()
+    const { data: batch, error } = await supabase.from('tembak_releases').insert({ driver_name: driver, released_date: today }).select('id,release_no,code').single()
     if (error) return show(error.message, true)
     for (const f of fills) {
       const { error: e2 } = await supabase.from('fleet_deliveries').update({
@@ -66,7 +66,7 @@ export default function FleetTembakDriver() {
       }).eq('id', f.id)
       if (e2) return show(e2.message, true)
     }
-    show(`Released ${fills.length} uang tembak (Release #${batch.release_no}).`); setReleasing(null); setSel(new Set()); load()
+    show(`Released ${fills.length} uang tembak (${batch.code || '#' + batch.release_no}).`); setReleasing(null); setSel(new Set()); load()
   }
   async function undo(id) {
     const { error } = await supabase.from('fleet_deliveries').update({ tembak_released: false, tembak_released_date: null, tembak_release_id: null }).eq('id', id)
@@ -128,7 +128,7 @@ export default function FleetTembakDriver() {
                 return (
                   <div className="crow open" key={b.id}>
                     <div className="crow-head" style={{ cursor: 'default' }}>
-                      <span className="fc-ctrl" style={{ fontSize: 13 }}>#{b.release_no}</span>
+                      <span className="fc-ctrl" style={{ fontSize: 12 }}>{b.code || '#' + b.release_no}</span>
                       <div className="crow-desc"><div className="d">{fmtDate(b.released_date)}</div><div className="m">{b.trips.length} trip{b.trips.length === 1 ? '' : 's'} · total sisa {rp(total)}</div></div>
                       <button className="btn ghost sm" onClick={() => setPrintBatch(b)}>Print</button>
                     </div>
@@ -215,7 +215,7 @@ function PayoutSlip({ driver, batch, trips, onClose }) {
         <div className="slip-hp-meta">
           <div><b>Supir:</b> {driver}</div>
           <div><b>Tanggal:</b> {fmtDate(batch.released_date)}</div>
-          <div><b>No. Release:</b> #{batch.release_no}</div>
+          <div><b>No. Release:</b> {batch.code || '#' + batch.release_no}</div>
           <div><b>Jumlah trip:</b> {trips.length}</div>
         </div>
         <table className="slip-hp-tbl">

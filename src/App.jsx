@@ -9,6 +9,7 @@ import FleetRegisters from './pages/FleetRegisters'
 import FleetSlips from './pages/FleetSlips'
 import FleetTembak from './pages/FleetTembak'
 import FleetTembakDriver from './pages/FleetTembakDriver'
+import FleetReports from './pages/FleetReports'
 import WarehouseHome from './pages/WarehouseHome'
 import WarehouseItems from './pages/WarehouseItems'
 import Dashboard from './pages/Dashboard'
@@ -43,6 +44,7 @@ function Fleet() {
         <Route path="slips" element={<FleetSlips />} />
         <Route path="tembak" element={<FleetTembak />} />
         <Route path="tembak/:name" element={<FleetTembakDriver />} />
+        <Route path="reports" element={<FleetReports />} />
         <Route path="registers" element={<FleetRegisters />} />
         <Route path="contracts/:id" element={<FleetContractDetail />} />
       </Routes>

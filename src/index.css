@@ -335,6 +335,29 @@ textarea { resize: vertical; min-height: 72px; }
 .wh-grid .row-inactive input { color: var(--text-2); }
 .slip-hp { background: #fff; width: 900px; max-width: 100%; padding: 28px 32px; border-radius: 8px; box-shadow: var(--shadow); }
 .rel-modal { background: #fff; width: 820px; max-width: 100%; padding: 24px 28px; border-radius: 8px; box-shadow: var(--shadow); }
+
+/* ---------- Daily report ---------- */
+.rep-head { text-align: center; margin-bottom: 18px; }
+.rep-title { font-family: var(--font-display); font-weight: 800; font-size: 18px; }
+.rep-date { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+.rep-group { margin-bottom: 18px; }
+.rep-gh { display: flex; align-items: baseline; gap: 12px; padding: 6px 0; border-bottom: 2px solid var(--ink); margin-bottom: 4px; }
+.rep-cn { font-family: var(--font-mono); font-weight: 700; }
+.rep-route { font-size: 13px; color: var(--text-2); }
+.rep-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rep-tbl th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 5px 8px; border-bottom: 1px solid var(--line-2); }
+.rep-tbl td { padding: 6px 8px; border-bottom: 1px solid var(--line-2); }
+.rep-tbl td.r, .rep-tbl th.r { text-align: right; }
+.rep-tbl .mono { font-family: var(--font-mono); }
+.rep-tbl .rep-sub td { font-weight: 600; border-top: 1px solid var(--line); border-bottom: none; color: var(--text-2); }
+.rep-total { margin-top: 20px; border-top: 2px solid var(--ink); padding-top: 12px; max-width: 340px; margin-left: auto; }
+.rep-total > div { display: flex; justify-content: space-between; padding: 3px 0; font-size: 14px; }
+.rep-total .grand { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 8px; font-size: 16px; font-weight: 800; }
+@media print {
+  body * { visibility: hidden; }
+  .report-print, .report-print * { visibility: visible; }
+  .report-print { position: absolute; left: 0; top: 0; width: 100%; }
+}
 .slip-hp-meta { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 4px 16px; font-size: 13px; margin: 12px 0 16px; }
 .slip-hp-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
 .slip-hp-tbl th { background: #F1F3F5; border: 1px solid var(--ink); padding: 6px 5px; font-size: 10px; text-align: center; }
