@@ -7,6 +7,7 @@ import FleetContracts from './pages/FleetContracts'
 import FleetContractDetail from './pages/FleetContractDetail'
 import FleetRegisters from './pages/FleetRegisters'
 import FleetSlips from './pages/FleetSlips'
+import FleetTembak from './pages/FleetTembak'
 import WarehouseHome from './pages/WarehouseHome'
 import WarehouseItems from './pages/WarehouseItems'
 import Dashboard from './pages/Dashboard'
@@ -39,6 +40,7 @@ function Fleet() {
         <Route path="/" element={<FleetHome />} />
         <Route path="contracts" element={<FleetContracts />} />
         <Route path="slips" element={<FleetSlips />} />
+        <Route path="tembak" element={<FleetTembak />} />
         <Route path="registers" element={<FleetRegisters />} />
         <Route path="contracts/:id" element={<FleetContractDetail />} />
       </Routes>

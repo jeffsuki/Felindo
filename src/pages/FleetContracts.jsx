@@ -94,14 +94,14 @@ export default function FleetContracts() {
               <thead>
                 <tr>
                   <th>Contract Number</th><th>Date</th><th>Client</th><th>Origin</th><th>Destination</th>
-                  <th className="r">Outstanding</th><th className="r">Total Susut</th><th>Status</th><th></th>
+                  <th className="r">Outstanding</th><th className="r">Total Claim Susut</th><th>Status</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {visible.map(c => {
                   const t = totals[c.id] || {}
                   const st = contractStatus(c, t)
-                  const overTol = c.quantity_kg && t.total_muatan > 0 && c.susut_tolerance != null && (t.total_susut / t.total_muatan) > Number(c.susut_tolerance)
+                  const claim = Number(t.total_claim || 0)
                   return (
                     <tr key={c.id}>
                       <td><div className="ct-no">{c.control_no}</div>{c.contract_no && <div className="ct-sub">{c.contract_no}</div>}</td>
@@ -110,7 +110,7 @@ export default function FleetContracts() {
                       <td>{c.origin || '—'}</td>
                       <td>{c.destination || '—'}</td>
                       <td className="r mono">{kg(t.outstanding)}</td>
-                      <td className="r mono" style={overTol ? { color: 'var(--urgent)', fontWeight: 700 } : {}}>{kg(t.total_susut)}</td>
+                      <td className="r mono" style={claim > 0 ? { color: 'var(--urgent)', fontWeight: 700 } : {}}>{kg(t.total_claim)}</td>
                       <td><Badge tone={STATUS_TONE[st]}>{STATUS_LABEL[st]}</Badge></td>
                       <td className="dk-actions">
                         <button className="btn ghost sm" onClick={() => setFormFor(c)}>Edit</button>

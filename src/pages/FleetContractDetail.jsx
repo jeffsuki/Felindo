@@ -97,8 +97,7 @@ export default function FleetContractDetail() {
           <div className="metric"><div className="k">Loaded (real)</div><div className="v" style={{ fontSize: 18 }}>{kg(totals.muatan)}</div></div>
           <div className="metric"><div className="k">Outstanding</div><div className="v" style={{ fontSize: 18 }}>{kg(totals.outstanding)}</div></div>
           <div className="metric"><div className="k">Deliveries</div><div className="v" style={{ fontSize: 18 }}>{rows.length}</div></div>
-          <div className="metric"><div className="k">Total Susut</div><div className="v" style={{ fontSize: 18, color: overTol ? 'var(--urgent)' : undefined }}>{kg(totals.susut)}{overTol && ' ⚠'}</div></div>
-          <div className="metric"><div className="k">Claim Susut</div><div className="v" style={{ fontSize: 18, color: totals.claim > 0 ? 'var(--urgent)' : undefined }}>{kg(totals.claim)}</div></div>
+          <div className="metric"><div className="k">Total Claim Susut</div><div className="v" style={{ fontSize: 18, color: totals.claim > 0 ? 'var(--urgent)' : undefined }}>{kg(totals.claim)}</div></div>
         </div>
 
         <div className="dk-wrap">

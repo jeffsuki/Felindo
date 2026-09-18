@@ -7,10 +7,11 @@ import { checkPassword, gateEnabled } from '../components/Gate'
 const num = v => (v === null || v === undefined || v === '') ? null : Number(v)
 const rp = n => (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString()
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
-const netOf = d => Number(d.borongan || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0) - Number(d.potongan_lain || 0)
+const netOf = d => Number(d.borongan || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
+const totalBbm = d => (Number(d.bbm_liter || 0) * Number(d.price_per_liter || 0))
 const isFilled = d => d.borongan != null
 const todayStr = () => new Date().toISOString().slice(0, 10)
-const NUMF = ['do_no', 'borongan', 'bbm_liter', 'bbm_rupiah', 'potongan_susut', 'potongan_pm', 'potongan_lain']
+const NUMF = ['do_no', 'borongan', 'bbm_liter', 'price_per_liter', 'bbm_rupiah', 'potongan_susut', 'potongan_pm']
 
 export default function FleetSlips() {
   const { show, node } = useToast()
@@ -32,7 +33,7 @@ export default function FleetSlips() {
     const [dl, ct, tr, dr] = await Promise.all([
       supabase.from('fleet_deliveries').select('*, contract:fleet_contracts(control_no,client,origin,destination)').order('tanggal', { ascending: false, nullsFirst: false }),
       supabase.from('fleet_contracts').select('id,control_no,client,origin,destination').order('control_no'),
-      supabase.from('trucks').select('id,plate,status').eq('status', 'Active').order('plate'),
+      supabase.from('trucks').select('id,plate,capacity_kg,status').eq('status', 'Active').order('plate'),
       supabase.from('drivers').select('name,nickname,status').eq('status', 'Active').order('name'),
     ])
     setRows(dl.data || []); setContracts(ct.data || []); setTrucks(tr.data || []); setDrivers(dr.data || [])
@@ -60,10 +61,23 @@ export default function FleetSlips() {
     const { error } = await supabase.from('fleet_deliveries').update({ [field]: value }).eq('id', did)
     if (error) show(error.message, true)
   }
+  // BBM total (bbm_rupiah) = liter × price/L; recompute and persist on either edit
+  async function saveBbm(did, field, raw) {
+    const row = rows.find(r => r.id === did) || {}
+    const L = field === 'bbm_liter' ? num(raw) : (row.bbm_liter == null ? null : Number(row.bbm_liter))
+    const P = field === 'price_per_liter' ? num(raw) : (row.price_per_liter == null ? null : Number(row.price_per_liter))
+    const total = Number(L || 0) * Number(P || 0)
+    setCell(did, 'bbm_rupiah', total)
+    const { error } = await supabase.from('fleet_deliveries').update({ [field]: num(raw), bbm_rupiah: total }).eq('id', did)
+    if (error) show(error.message, true)
+  }
   async function saveTruck(did, truckId) {
     const t = trucks.find(x => x.id === truckId)
-    setCell(did, 'truck_id', truckId || null); setCell(did, 'plate', t?.plate || null)
-    await supabase.from('fleet_deliveries').update({ truck_id: truckId || null, plate: t?.plate || null }).eq('id', did)
+    const patch = { truck_id: truckId || null, plate: t?.plate || null }
+    if (t && t.capacity_kg != null) patch.estimasi_muat = Number(t.capacity_kg)
+    setRows(rs => rs.map(r => r.id === did ? { ...r, ...patch } : r))
+    const { error } = await supabase.from('fleet_deliveries').update(patch).eq('id', did)
+    if (error) show(error.message, true)
   }
   async function saveContractLink(did, cid) {
     const c = contracts.find(x => x.id === cid)
@@ -83,6 +97,7 @@ export default function FleetSlips() {
     const { error } = await supabase.from('fleet_deliveries').insert({
       contract_id, do_no: nextNo, truck_id: truck_id || null, plate: t?.plate || null,
       driver_name: driver_name || null, tanggal: tanggal || null,
+      estimasi_muat: t?.capacity_kg != null ? Number(t.capacity_kg) : null,
     })
     if (error) return show(error.message, true)
     show('Slip created.'); setAdding(false); load()
@@ -121,8 +136,8 @@ export default function FleetSlips() {
                 <thead>
                   <tr>
                     <th>Tanggal</th><th>Plat</th><th>Supir</th><th>No. Kontrol</th><th>Asal</th><th>Tujuan</th>
-                    <th className="r">Borongan</th><th className="r">BBM L</th><th className="r">BBM Rp</th>
-                    <th className="r">Pot Susut</th><th className="r">Pot PM</th><th className="r">Pot Lain</th>
+                    <th className="r">Borongan</th><th className="r">BBM L</th><th className="r">Price/L</th><th className="r">Total BBM</th>
+                    <th className="r">Pot Susut</th><th className="r">Pot PM</th>
                     <th className="r">Sisa</th><th>Keterangan</th><th></th>
                   </tr>
                 </thead>
@@ -138,11 +153,11 @@ export default function FleetSlips() {
                         <td className="ro">{d.contract?.origin || '—'}</td>
                         <td className="ro">{d.contract?.destination || '—'}</td>
                         <td><input type="number" disabled={locked} value={d.borongan ?? ''} onChange={e => setCell(d.id, 'borongan', e.target.value)} onBlur={e => saveField(d.id, 'borongan', e.target.value)} /></td>
-                        <td><input type="number" disabled={locked} value={d.bbm_liter ?? ''} onChange={e => setCell(d.id, 'bbm_liter', e.target.value)} onBlur={e => saveField(d.id, 'bbm_liter', e.target.value)} /></td>
-                        <td><input type="number" disabled={locked} value={d.bbm_rupiah ?? ''} onChange={e => setCell(d.id, 'bbm_rupiah', e.target.value)} onBlur={e => saveField(d.id, 'bbm_rupiah', e.target.value)} /></td>
+                        <td><input type="number" disabled={locked} value={d.bbm_liter ?? ''} onChange={e => setCell(d.id, 'bbm_liter', e.target.value)} onBlur={e => saveBbm(d.id, 'bbm_liter', e.target.value)} /></td>
+                        <td><input type="number" disabled={locked} value={d.price_per_liter ?? ''} onChange={e => setCell(d.id, 'price_per_liter', e.target.value)} onBlur={e => saveBbm(d.id, 'price_per_liter', e.target.value)} /></td>
+                        <td className="mono ro r">{totalBbm(d) ? totalBbm(d).toLocaleString() : '—'}</td>
                         <td><input type="number" disabled={locked} value={d.potongan_susut ?? ''} onChange={e => setCell(d.id, 'potongan_susut', e.target.value)} onBlur={e => saveField(d.id, 'potongan_susut', e.target.value)} /></td>
                         <td><input type="number" disabled={locked} value={d.potongan_pm ?? ''} onChange={e => setCell(d.id, 'potongan_pm', e.target.value)} onBlur={e => saveField(d.id, 'potongan_pm', e.target.value)} /></td>
-                        <td><input type="number" disabled={locked} value={d.potongan_lain ?? ''} onChange={e => setCell(d.id, 'potongan_lain', e.target.value)} onBlur={e => saveField(d.id, 'potongan_lain', e.target.value)} /></td>
                         <td className="mono ro r" style={{ fontWeight: 700 }}>{isFilled(d) ? rp(netOf(d)) : '—'}</td>
                         <td><input disabled={locked} value={d.keterangan || ''} onChange={e => setCell(d.id, 'keterangan', e.target.value)} onBlur={e => saveField(d.id, 'keterangan', e.target.value)} /></td>
                         <td className="dk-actions">
@@ -222,12 +237,12 @@ function SlipPrintH({ d, c, onClose }) {
         <table className="slip-hp-tbl">
           <thead><tr>
             <th>NO</th><th>NOMOR KONTROL</th><th>ASAL</th><th>TUJUAN</th><th>JUMLAH BORONGAN</th>
-            <th>BBM LITER</th><th>BBM RUPIAH</th><th>POT. SUSUT</th><th>POT. PM</th><th>POT. LAIN</th><th>SISA BORONGAN</th><th>KETERANGAN</th>
+            <th>BBM LITER</th><th>PRICE/L</th><th>TOTAL BBM</th><th>POT. SUSUT</th><th>POT. PM</th><th>SISA BORONGAN</th><th>KETERANGAN</th>
           </tr></thead>
           <tbody><tr>
             <td>{d.do_no}</td><td>{c.control_no || '—'}</td><td>{c.origin || '—'}</td><td>{c.destination || '—'}</td>
-            <td className="r">{rp(d.borongan)}</td><td className="r">{d.bbm_liter || ''}</td><td className="r">{rp(d.bbm_rupiah)}</td>
-            <td className="r">{rp(d.potongan_susut)}</td><td className="r">{rp(d.potongan_pm)}</td><td className="r">{rp(d.potongan_lain)}</td>
+            <td className="r">{rp(d.borongan)}</td><td className="r">{d.bbm_liter || ''}</td><td className="r">{rp(d.price_per_liter)}</td><td className="r">{rp(totalBbm(d))}</td>
+            <td className="r">{rp(d.potongan_susut)}</td><td className="r">{rp(d.potongan_pm)}</td>
             <td className="r" style={{ fontWeight: 800 }}>{rp(netOf(d))}</td><td>{d.keterangan || ''}</td>
           </tr></tbody>
         </table>
