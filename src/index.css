@@ -334,6 +334,7 @@ textarea { resize: vertical; min-height: 72px; }
 .wh-grid .row-inactive td { background: #F7F5F1; }
 .wh-grid .row-inactive input { color: var(--text-2); }
 .slip-hp { background: #fff; width: 900px; max-width: 100%; padding: 28px 32px; border-radius: 8px; box-shadow: var(--shadow); }
+.rel-modal { background: #fff; width: 820px; max-width: 100%; padding: 24px 28px; border-radius: 8px; box-shadow: var(--shadow); }
 .slip-hp-meta { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 4px 16px; font-size: 13px; margin: 12px 0 16px; }
 .slip-hp-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
 .slip-hp-tbl th { background: #F1F3F5; border: 1px solid var(--ink); padding: 6px 5px; font-size: 10px; text-align: center; }

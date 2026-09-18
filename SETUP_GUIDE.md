@@ -70,7 +70,7 @@ to provision.
 Open **SQL Editor** → **New query**, then run the migration files **in order**,
 each as its own query: `0001_init.sql`, `0002_history.sql`,
 `0003_master_editable.sql`, `0004_waiting_reason.sql`, `0005_wo_description.sql`,
-`0006_started_and_helper.sql`, `0007_pin_complaints.sql`, `0008_complaint_code_month.sql`, `0009_resolution.sql`, `0010_external_assignee.sql`, `0011_shopboard_external.sql`, `0012_wo_code_month.sql`, `0013_void.sql`, `0014_by_driver.sql`, `0015_vendor_outsource.sql`, `0016_fleet.sql`, `0017_fleet_registers.sql`, `0018_fleet_drivers_status.sql`, `0019_fleet_outstanding.sql`, `0020_status_inactive.sql`, `0021_warehouse.sql`, `0022_fleet_claim.sql`, `0023_bbm_price.sql`, then `0024_uang_tembak.sql`. Or with psql:
+`0006_started_and_helper.sql`, `0007_pin_complaints.sql`, `0008_complaint_code_month.sql`, `0009_resolution.sql`, `0010_external_assignee.sql`, `0011_shopboard_external.sql`, `0012_wo_code_month.sql`, `0013_void.sql`, `0014_by_driver.sql`, `0015_vendor_outsource.sql`, `0016_fleet.sql`, `0017_fleet_registers.sql`, `0018_fleet_drivers_status.sql`, `0019_fleet_outstanding.sql`, `0020_status_inactive.sql`, `0021_warehouse.sql`, `0022_fleet_claim.sql`, `0023_bbm_price.sql`, `0024_uang_tembak.sql`, then `0025_tembak_potongan.sql`. Or with psql:
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0001_init.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0002_history.sql
@@ -96,6 +96,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0021_warehouse.sq
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0022_fleet_claim.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0023_bbm_price.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0024_uang_tembak.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0025_tembak_potongan.sql
 ```
 `0001` core; `0002` history; `0003` wide codes + nicknames; `0004` waiting
 reason; `0005` work-order descriptions in the views; `0006` editable start time
