@@ -1,24 +1,24 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Spinner, Empty, useToast } from '../components/ui'
 
-const STAGES = ['Menuju Muat', 'Muat', 'Dalam Perjalanan', 'Bongkar', 'Gantung', 'Perbaikan', 'Rusak di Jalan']
-const ORDER = ['Perbaikan', 'Rusak di Jalan', 'Muat', 'Bongkar', 'Gantung', 'Dalam Perjalanan', 'Menuju Muat', 'Kosong']
+// Fixed kanban columns. Flow chosen by whether the truck has an active DO.
+const WITH_DO = ['Muat', 'Gantung/Rusak di jalan', 'Bongkar']
+const NO_DO = ['Kosong', 'Rusak', 'Gantung']
 
-// Fleet Overview: manually set where each truck is. Fully manual, no override.
 export default function FleetHome() {
   const { show, node } = useToast()
   const [trucks, setTrucks] = useState([])
-  const [byPlate, setByPlate] = useState({})   // plate -> { driver, route }
+  const [byPlate, setByPlate] = useState({})
   const [loading, setLoading] = useState(true)
-  const [onlyDriver, setOnlyDriver] = useState(false)
   const [q, setQ] = useState('')
+  const dragId = useRef(null)
 
   async function load() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
     const [tr, dl] = await Promise.all([
-      supabase.from('trucks').select('id,plate,stage,status').eq('status', 'Active').order('plate'),
+      supabase.from('trucks').select('id,plate,stage,fleet_division,status').eq('status', 'Active').order('plate'),
       supabase.from('fleet_deliveries').select('plate,driver_name,contract:fleet_contracts(origin,destination)')
         .not('driver_name', 'is', null).is('tanggal_bongkar', null),
     ])
@@ -30,66 +30,61 @@ export default function FleetHome() {
 
   async function setStage(id, stage) {
     setTrucks(ts => ts.map(t => t.id === id ? { ...t, stage } : t))
-    const { error } = await supabase.from('trucks').update({ stage: stage || null }).eq('id', id)
+    const { error } = await supabase.from('trucks').update({ stage }).eq('id', id)
     if (error) show(error.message, true)
   }
 
-  const filtered = useMemo(() => {
+  const placed = useMemo(() => {
     const s = q.trim().toLowerCase()
-    return trucks.filter(t => {
-      if (onlyDriver && !byPlate[t.plate]) return false
-      if (s && !(`${t.plate} ${byPlate[t.plate]?.driver || ''}`.toLowerCase().includes(s))) return false
-      return true
-    })
-  }, [trucks, byPlate, onlyDriver, q])
-
-  const buckets = useMemo(() => {
-    const m = {}
-    for (const t of filtered) { const c = t.stage || 'Kosong'; (m[c] = m[c] || []).push(t) }
-    return m
-  }, [filtered])
-  const cats = ORDER.filter(c => buckets[c]?.length)
+    const withDo = {}; const noDo = {}
+    WITH_DO.forEach(c => withDo[c] = []); NO_DO.forEach(c => noDo[c] = [])
+    for (const t of trucks) {
+      if (s && !(`${t.plate} ${byPlate[t.plate]?.driver || ''}`.toLowerCase().includes(s))) continue
+      const hasDo = !!byPlate[t.plate]
+      if (hasDo) { const col = WITH_DO.includes(t.stage) ? t.stage : 'Muat'; withDo[col].push(t) }
+      else { const col = NO_DO.includes(t.stage) ? t.stage : 'Kosong'; noDo[col].push(t) }
+    }
+    return { withDo, noDo }
+  }, [trucks, byPlate, q])
 
   if (loading) return (<><div className="topbar"><div><h1>Fleet Overview</h1></div></div><div className="content"><Spinner /></div></>)
+
+  const Card = ({ t }) => {
+    const info = byPlate[t.plate]
+    return (
+      <div className="kb-card" draggable onDragStart={() => { dragId.current = t.id }}>
+        <div className="kb-plate">{t.plate}</div>
+        {info && <div className="kb-sub">{info.driver}<br />{info.route}</div>}
+      </div>
+    )
+  }
+  const Col = ({ name, list }) => {
+    const [over, setOver] = useState(false)
+    return (
+      <div className={'kb-col' + (over ? ' over' : '')}
+        onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
+        onDrop={() => { setOver(false); if (dragId.current) setStage(dragId.current, name); dragId.current = null }}>
+        <div className="kb-col-h">{name}<span>{list.length}</span></div>
+        <div className="kb-col-body">{list.map(t => <Card key={t.id} t={t} />)}</div>
+      </div>
+    )
+  }
 
   return (
     <>
       <div className="topbar">
-        <div><h1>Fleet Overview</h1><div className="sub">Set where each truck is · {filtered.length} shown</div></div>
+        <div><h1>Fleet Overview</h1><div className="sub">Drag a truck to set where it is</div></div>
         <button className="btn ghost" onClick={load}>Refresh</button>
       </div>
-      <div className="content" style={{ maxWidth: 1100 }}>
-        <div className="controls">
-          <div className="field grow"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search plate / driver…" /></div>
-          <button className="btn ghost" onClick={() => setOnlyDriver(v => !v)}>{onlyDriver ? 'Show all trucks' : 'Only with driver'}</button>
-        </div>
-        {filtered.length === 0 ? <Empty title="No trucks">Nothing to show.</Empty> : (
-          <div className="fo-cols">
-            {cats.map(cat => (
-              <div className="fo-cat" key={cat}>
-                <div className="fo-cat-h">{cat}<span>{buckets[cat].length}</span></div>
-                <table className="fo-tbl">
-                  <tbody>
-                    {buckets[cat].map(t => {
-                      const info = byPlate[t.plate]
-                      return (
-                        <tr key={t.id}>
-                          <td className="fo-plate">{t.plate}</td>
-                          <td className="fo-driver">{info?.driver || ''}</td>
-                          <td className="fo-route">{info?.route || ''}</td>
-                          <td className="fo-stage">
-                            <select value={t.stage || ''} onChange={e => setStage(t.id, e.target.value)}>
-                              <option value="">— Kosong</option>{STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-          </div>
+      <div className="content" style={{ maxWidth: 1240 }}>
+        <div className="controls"><div className="field grow"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search plate / driver…" /></div></div>
+        {trucks.length === 0 ? <Empty title="No trucks">Add trucks in Master Data.</Empty> : (
+          <>
+            <div className="kb-flow-h">Dengan DO</div>
+            <div className="kb-board">{WITH_DO.map(c => <Col key={c} name={c} list={placed.withDo[c]} />)}</div>
+            <div className="kb-flow-h" style={{ marginTop: 20 }}>Tanpa DO</div>
+            <div className="kb-board">{NO_DO.map(c => <Col key={c} name={c} list={placed.noDo[c]} />)}</div>
+          </>
         )}
       </div>
       {node}

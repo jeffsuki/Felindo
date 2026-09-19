@@ -100,6 +100,7 @@ function EntityManager({ cfg }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
+  const [divFilter, setDivFilter] = useState('all')   // trucks: all | Tangki | Gerobak
   const [editing, setEditing] = useState(null)   // row id, or 'new', or null
   const [showRetired, setShowRetired] = useState(false)
 
@@ -116,10 +117,11 @@ function EntityManager({ cfg }) {
     const t = q.trim().toLowerCase()
     return rows.filter(r => {
       if (!showRetired && r.status !== 'Active') return false
+      if (cfg.table === 'trucks' && divFilter !== 'all' && r.fleet_division !== divFilter) return false
       if (!t) return true
       return cfg.search(r).toLowerCase().includes(t)
     })
-  }, [rows, q, showRetired, cfg])
+  }, [rows, q, showRetired, cfg, divFilter])
 
   async function save(id, patch) {
     if (id === 'new') {
@@ -150,6 +152,11 @@ function EntityManager({ cfg }) {
           <input value={q} onChange={e => setQ(e.target.value)}
             placeholder={`Search ${cfg.label.toLowerCase()} by name, code${cfg.table !== 'vendors' ? ', nickname' : ''}…`} />
         </div>
+        {cfg.table === 'trucks' && (
+          <select value={divFilter} onChange={e => setDivFilter(e.target.value)} style={{ width: 'auto' }}>
+            <option value="all">All types</option><option value="Tangki">Tangki</option><option value="Gerobak">Gerobak</option>
+          </select>
+        )}
         <button className="btn ghost" onClick={() => setShowRetired(s => !s)}>
           {showRetired ? 'Hide retired' : 'Show retired'}
         </button>
