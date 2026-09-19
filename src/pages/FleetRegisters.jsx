@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Spinner, Empty, Badge, useToast } from '../components/ui'
+import PasswordConfirm from '../components/PasswordConfirm'
 
 export default function FleetRegisters() {
   const { show, node } = useToast()
@@ -28,6 +29,7 @@ export default function FleetRegisters() {
 function Clients({ show }) {
   const [rows, setRows] = useState([]); const [loading, setLoading] = useState(true)
   const [name, setName] = useState(''); const [note, setNote] = useState('')
+  const [pending, setPending] = useState(null)
   async function load() {
     if (!isConfigured) { setLoading(false); return }
     const { data } = await supabase.from('fleet_clients').select('*').order('name')
@@ -60,11 +62,12 @@ function Clients({ show }) {
           {rows.map(r => (
             <div className="md-row" key={r.id} style={{ gridTemplateColumns: '1fr auto' }}>
               <div><div className="md-name">{r.name}</div>{r.note && <div className="md-sub">{r.note}</div>}</div>
-              <button className="btn ghost sm void-btn" onClick={() => { if (confirm(`Delete ${r.name}?`)) del(r.id) }}>Delete</button>
+              <button className="btn ghost sm void-btn" onClick={() => setPending(r)}>Delete</button>
             </div>
           ))}
         </div>
       )}
+      {pending && <PasswordConfirm title={`Delete client ${pending.name}?`} onConfirm={() => { del(pending.id); setPending(null) }} onCancel={() => setPending(null)} />}
     </>
   )
 }
@@ -72,6 +75,7 @@ function Clients({ show }) {
 function Locations({ show }) {
   const [rows, setRows] = useState([]); const [loading, setLoading] = useState(true)
   const [name, setName] = useState(''); const [kind, setKind] = useState('Both'); const [note, setNote] = useState('')
+  const [pending, setPending] = useState(null)
   async function load() {
     if (!isConfigured) { setLoading(false); return }
     const { data } = await supabase.from('fleet_locations').select('*').order('name')
@@ -112,11 +116,12 @@ function Locations({ show }) {
             <div className="md-row" key={r.id} style={{ gridTemplateColumns: '1fr auto auto' }}>
               <div><div className="md-name">{r.name}</div>{r.note && <div className="md-sub">{r.note}</div>}</div>
               <Badge tone="muted">{r.kind}</Badge>
-              <button className="btn ghost sm void-btn" onClick={() => { if (confirm(`Delete ${r.name}?`)) del(r.id) }}>Delete</button>
+              <button className="btn ghost sm void-btn" onClick={() => setPending(r)}>Delete</button>
             </div>
           ))}
         </div>
       )}
+      {pending && <PasswordConfirm title={`Delete place ${pending.name}?`} onConfirm={() => { del(pending.id); setPending(null) }} onCancel={() => setPending(null)} />}
     </>
   )
 }

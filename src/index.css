@@ -369,6 +369,20 @@ textarea { resize: vertical; min-height: 72px; }
 .rh-routes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 .rh-chip { font-size: 12px; background: #EEF1F3; border-radius: 100px; padding: 4px 12px; color: var(--text-2); }
 .rh-chip b { color: var(--text); }
+
+/* ---------- Fleet Overview (compact) ---------- */
+.fo-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; align-items: start; }
+.fo-cat { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--card); }
+.fo-cat-h { display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 6px 10px; border-bottom: 1px solid var(--line); color: var(--text-2); }
+.fo-cat-h span { font-family: var(--font-mono); color: var(--muted); }
+.fo-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.fo-tbl td { padding: 4px 8px; border-top: 1px solid var(--line-2); white-space: nowrap; }
+.fo-tbl tr:first-child td { border-top: none; }
+.fo-plate { font-family: var(--font-mono); font-weight: 600; }
+.fo-driver { max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
+.fo-route { color: var(--text-2); font-size: 11px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.fo-stage select { font-size: 11px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 4px; background: transparent; }
+.fo-rep { font-size: 11px; color: var(--urgent); font-family: var(--font-mono); }
 @media print {
   body * { visibility: hidden; }
   .report-print, .report-print * { visibility: visible; }
