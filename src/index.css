@@ -418,6 +418,18 @@ textarea { resize: vertical; min-height: 72px; }
 .adj-grid label span { font-size: 11px; color: var(--muted); }
 .adj-grid input, .adj-grid select { font-size: 13px; padding: 6px 8px; }
 .adj-retur { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; }
+
+/* compact new-slip form */
+.nsf { font-size: 12px; }
+.nsf-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px 12px; }
+.nsf-grid label { display: flex; flex-direction: column; gap: 2px; }
+.nsf-grid label > span { font-size: 10px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.nsf-grid input, .nsf-grid select { font-size: 12px; padding: 5px 7px; }
+.nsf-note { font-size: 11px; color: var(--muted); margin-top: 5px; }
+.nsf-toggle { background: none; border: none; color: var(--accent-ink); font-size: 12px; font-weight: 600; cursor: pointer; padding: 8px 0 2px; }
+.nsf-ket { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.nsf-ket > span { font-size: 10px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.nsf-ket input { font-size: 12px; padding: 5px 7px; }
 @media print {
   body * { visibility: hidden; }
   .report-print, .report-print * { visibility: visible; }

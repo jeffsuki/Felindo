@@ -9,10 +9,9 @@ const num = v => (v === null || v === undefined || v === '') ? null : Number(v)
 const JENIS_POT = ['Susut', 'Ganti Ban', 'Ganti Spare Part', 'Lainnya']
 const rp = n => (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString('id-ID')
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
-const netOf = d => Number(d.borongan || 0) - Number(d.selisih_bbm || 0) - Number(d.potongan_pihak || 0)
-  - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
+const netOf = d => Number(d.borongan || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
   + Number(d.tambahan_cuci || 0) + Number(d.tambahan_steam || 0) + Number(d.tambahan_tol || 0)
-const hasAdj = d => [d.selisih_bbm, d.potongan_pihak, d.tambahan_cuci, d.tambahan_steam, d.tambahan_tol].some(v => v) || d.is_retur
+const hasAdj = d => [d.tambahan_cuci, d.tambahan_steam, d.tambahan_tol].some(v => v) || d.is_retur
 const totalBbm = d => (Number(d.bbm_liter || 0) * Number(d.price_per_liter || 0))
 const isFilled = d => d.borongan != null
 const todayStr = () => new Date().toISOString().slice(0, 10)
@@ -209,42 +208,24 @@ function UnlockModal({ onOk, onCancel }) {
 
 function AdjustModal({ d, onSave, onClose }) {
   const [f, setF] = useState({
-    selisih_liter: d.selisih_bbm_liter ?? '', selisih_price: d.selisih_bbm_price ?? '',
-    potongan_pihak: d.potongan_pihak ?? '', potongan_pihak_nama: d.potongan_pihak_nama || '',
     tambahan_cuci: d.tambahan_cuci ?? '', tambahan_steam: d.tambahan_steam ?? '', tambahan_tol: d.tambahan_tol ?? '',
     is_retur: !!d.is_retur,
   })
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
   const nz = v => (v === '' || v === null || v === undefined) ? 0 : Number(v)
   const orNull = v => (v === '' || v === null || v === undefined) ? null : Number(v)
-  const selisih = nz(f.selisih_liter) * nz(f.selisih_price)
-  const preview = Number(d.borongan || 0) - selisih - nz(f.potongan_pihak)
-    - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
+  const preview = Number(d.borongan || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
     + nz(f.tambahan_cuci) + nz(f.tambahan_steam) + nz(f.tambahan_tol)
   function save() {
     onSave({
-      selisih_bbm_liter: orNull(f.selisih_liter), selisih_bbm_price: orNull(f.selisih_price), selisih_bbm: selisih || null,
-      potongan_pihak: orNull(f.potongan_pihak), potongan_pihak_nama: f.potongan_pihak_nama.trim() || null,
       tambahan_cuci: orNull(f.tambahan_cuci), tambahan_steam: orNull(f.tambahan_steam), tambahan_tol: orNull(f.tambahan_tol),
       is_retur: f.is_retur,
     })
   }
   return (
     <div className="slip-scrim">
-      <div className="rel-modal" style={{ width: 480 }}>
+      <div className="rel-modal" style={{ width: 440 }}>
         <div className="slip-h" style={{ fontSize: 18 }}>Penyesuaian slip · {d.plate || '—'}</div>
-        <div className="fd-sec">Potongan (kurangi borongan)</div>
-        <div className="adj-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
-          <label><span>Selisih BBM Liter</span><NumInput value={f.selisih_liter} onChange={v => set('selisih_liter', v)} onCommit={v => set('selisih_liter', v)} /></label>
-          <label><span>Selisih BBM Price/L</span><NumInput value={f.selisih_price} onChange={v => set('selisih_price', v)} onCommit={v => set('selisih_price', v)} /></label>
-          <div className="fd-f" style={{ justifyContent: 'flex-end' }}><span>= Selisih</span><div className="fd-calc">{rp(selisih)}</div></div>
-          <label><span>Potongan ANS/MNA</span><NumInput value={f.potongan_pihak} onChange={v => set('potongan_pihak', v)} onCommit={v => set('potongan_pihak', v)} /></label>
-          <label><span>Dari pihak</span>
-            <select value={f.potongan_pihak_nama} onChange={e => set('potongan_pihak_nama', e.target.value)}>
-              <option value="">—</option><option value="ANS">ANS</option><option value="MNA">MNA</option><option value="Lainnya">Lainnya</option>
-            </select>
-          </label>
-        </div>
         <div className="fd-sec">Tambahan (tambah sisa)</div>
         <div className="adj-grid">
           <label><span>Cuci tangki</span><NumInput value={f.tambahan_cuci} onChange={v => set('tambahan_cuci', v)} onCommit={v => set('tambahan_cuci', v)} /></label>
@@ -268,18 +249,17 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   const [f, setF] = useState({
     contract_id: '', truck_id: '', driver_name: '', tanggal: new Date().toISOString().slice(0, 10),
     borongan: '', bbm_liter: '', price_per_liter: '', potongan_susut: '', potongan_pm: '', jenis_potongan: '',
-    selisih_liter: '', selisih_price: '', potongan_pihak: '', potongan_pihak_nama: '',
     tambahan_cuci: '', tambahan_steam: '', tambahan_tol: '', is_retur: false, keterangan: '',
   })
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
   const [err, setErr] = useState('')
+  const [showAdj, setShowAdj] = useState(false)
   const nz = v => (v === '' || v === null || v === undefined) ? 0 : Number(v)
+  const orNull = v => (v === '' || v === null || v === undefined) ? null : Number(v)
   const truck = trucks.find(t => t.id === f.truck_id)
   const totalBbm = nz(f.bbm_liter) * nz(f.price_per_liter)
-  const selisih = nz(f.selisih_liter) * nz(f.selisih_price)
-  const sisa = nz(f.borongan) - selisih - nz(f.potongan_pihak) - totalBbm - nz(f.potongan_susut) - nz(f.potongan_pm)
+  const sisa = nz(f.borongan) - totalBbm - nz(f.potongan_susut) - nz(f.potongan_pm)
     + nz(f.tambahan_cuci) + nz(f.tambahan_steam) + nz(f.tambahan_tol)
-  const orNull = v => (v === '' || v === null || v === undefined) ? null : Number(v)
 
   function submit() {
     if (!f.contract_id) return setErr('Pick a contract.')
@@ -289,55 +269,41 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
       estimasi_muat: truck?.capacity_kg != null ? Number(truck.capacity_kg) : null,
       borongan: orNull(f.borongan), bbm_liter: orNull(f.bbm_liter), price_per_liter: orNull(f.price_per_liter), bbm_rupiah: totalBbm || null,
       potongan_susut: orNull(f.potongan_susut), potongan_pm: orNull(f.potongan_pm), jenis_potongan: f.jenis_potongan || null,
-      selisih_bbm_liter: orNull(f.selisih_liter), selisih_bbm_price: orNull(f.selisih_price), selisih_bbm: selisih || null,
-      potongan_pihak: orNull(f.potongan_pihak), potongan_pihak_nama: f.potongan_pihak_nama || null,
       tambahan_cuci: orNull(f.tambahan_cuci), tambahan_steam: orNull(f.tambahan_steam), tambahan_tol: orNull(f.tambahan_tol),
       is_retur: f.is_retur, keterangan: f.keterangan.trim() || null,
     })
   }
 
   return (
-    <div className="form" style={{ maxWidth: 720 }}>
-      <div className="row2">
-        <div className="field"><label>Contract *</label>
-          <SearchSelect value={f.contract_id} onChange={v => set('contract_id', v)} placeholder="Pick contract…"
-            options={contracts.map(c => ({ value: c.id, label: c.control_no, sub: c.client || '', search: c.client || '' }))} /></div>
-        <div className="field"><label>Date</label><input type="date" value={f.tanggal} onChange={e => set('tanggal', e.target.value)} /></div>
-      </div>
-      <div className="row2">
-        <div className="field"><label>Truck</label><SearchSelect value={f.truck_id} onChange={v => set('truck_id', v)} placeholder="Pick truck…" options={trucks.map(t => ({ value: t.id, label: t.plate }))} /></div>
-        <div className="field"><label>Driver</label><SearchSelect value={f.driver_name} onChange={v => set('driver_name', v)} placeholder="Pick driver…" options={drivers.map(d => ({ value: d.name, label: d.nickname ? `${d.name} (${d.nickname})` : d.name }))} /></div>
-      </div>
-      <div className="fd-sec">Borongan & BBM</div>
-      <div className="adj-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+    <div className="form nsf" style={{ maxWidth: 680 }}>
+      <div className="nsf-grid">
+        <label><span>Contract *</span><SearchSelect value={f.contract_id} onChange={v => set('contract_id', v)} placeholder="Pick…" options={contracts.map(c => ({ value: c.id, label: c.control_no, sub: c.client || '', search: c.client || '' }))} /></label>
+        <label><span>Date</span><input type="date" value={f.tanggal} onChange={e => set('tanggal', e.target.value)} /></label>
+        <label><span>Truck</span><SearchSelect value={f.truck_id} onChange={v => set('truck_id', v)} placeholder="Pick…" options={trucks.map(t => ({ value: t.id, label: t.plate }))} /></label>
+        <label><span>Driver</span><SearchSelect value={f.driver_name} onChange={v => set('driver_name', v)} placeholder="Pick…" options={drivers.map(d => ({ value: d.name, label: d.nickname ? `${d.name} (${d.nickname})` : d.name }))} /></label>
         <label><span>Borongan</span><NumInput value={f.borongan} onChange={v => set('borongan', v)} onCommit={v => set('borongan', v)} /></label>
+        <label><span>Jenis Potongan</span><select value={f.jenis_potongan} onChange={e => set('jenis_potongan', e.target.value)}><option value="">—</option>{JENIS_POT.map(j => <option key={j} value={j}>{j}</option>)}</select></label>
         <label><span>BBM Liter</span><NumInput value={f.bbm_liter} onChange={v => set('bbm_liter', v)} onCommit={v => set('bbm_liter', v)} /></label>
         <label><span>BBM Price/L</span><NumInput value={f.price_per_liter} onChange={v => set('price_per_liter', v)} onCommit={v => set('price_per_liter', v)} /></label>
-      </div>
-      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Total BBM: {rp(totalBbm)}</div>
-      <div className="fd-sec">Potongan</div>
-      <div className="adj-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
         <label><span>Pot Susut</span><NumInput value={f.potongan_susut} onChange={v => set('potongan_susut', v)} onCommit={v => set('potongan_susut', v)} /></label>
         <label><span>Pot PM</span><NumInput value={f.potongan_pm} onChange={v => set('potongan_pm', v)} onCommit={v => set('potongan_pm', v)} /></label>
-        <label><span>Jenis Potongan</span><select value={f.jenis_potongan} onChange={e => set('jenis_potongan', e.target.value)}><option value="">—</option>{JENIS_POT.map(j => <option key={j} value={j}>{j}</option>)}</select></label>
       </div>
-      <div className="fd-sec">Penyesuaian (situational)</div>
-      <div className="adj-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
-        <label><span>Selisih BBM Liter</span><NumInput value={f.selisih_liter} onChange={v => set('selisih_liter', v)} onCommit={v => set('selisih_liter', v)} /></label>
-        <label><span>Selisih BBM Price/L</span><NumInput value={f.selisih_price} onChange={v => set('selisih_price', v)} onCommit={v => set('selisih_price', v)} /></label>
-        <div className="fd-f" style={{ justifyContent: 'flex-end' }}><span>= Selisih BBM</span><div className="fd-calc">{rp(selisih)}</div></div>
-        <label><span>Potongan ANS/MNA</span><NumInput value={f.potongan_pihak} onChange={v => set('potongan_pihak', v)} onCommit={v => set('potongan_pihak', v)} /></label>
-        <label><span>Dari pihak</span><select value={f.potongan_pihak_nama} onChange={e => set('potongan_pihak_nama', e.target.value)}><option value="">—</option><option value="ANS">ANS</option><option value="MNA">MNA</option><option value="Lainnya">Lainnya</option></select></label>
-        <div></div>
-        <label><span>Cuci tangki</span><NumInput value={f.tambahan_cuci} onChange={v => set('tambahan_cuci', v)} onCommit={v => set('tambahan_cuci', v)} /></label>
-        <label><span>Double steam</span><NumInput value={f.tambahan_steam} onChange={v => set('tambahan_steam', v)} onCommit={v => set('tambahan_steam', v)} /></label>
-        <label><span>Bantuan uang tol</span><NumInput value={f.tambahan_tol} onChange={v => set('tambahan_tol', v)} onCommit={v => set('tambahan_tol', v)} /></label>
-      </div>
-      <label className="adj-retur"><input type="checkbox" checked={f.is_retur} onChange={e => set('is_retur', e.target.checked)} /> Slip untuk retur</label>
-      <div className="field" style={{ marginTop: 10 }}><label>Keterangan</label><input value={f.keterangan} onChange={e => set('keterangan', e.target.value)} /></div>
-      {err && <div style={{ color: 'var(--urgent)', fontSize: 13, marginBottom: 8 }}>{err}</div>}
-      <div style={{ display: 'flex', alignItems: 'center', marginTop: 12 }}>
-        <span style={{ fontWeight: 700, fontSize: 16 }}>Sisa: {rp(sisa)}</span>
+      <div className="nsf-note">Total BBM: {rp(totalBbm)}</div>
+
+      <button type="button" className="nsf-toggle" onClick={() => setShowAdj(v => !v)}>{showAdj ? '▾' : '▸'} Penyesuaian</button>
+      {showAdj && (
+        <div className="nsf-grid" style={{ marginTop: 6 }}>
+          <label><span>Cuci tangki</span><NumInput value={f.tambahan_cuci} onChange={v => set('tambahan_cuci', v)} onCommit={v => set('tambahan_cuci', v)} /></label>
+          <label><span>Double steam</span><NumInput value={f.tambahan_steam} onChange={v => set('tambahan_steam', v)} onCommit={v => set('tambahan_steam', v)} /></label>
+          <label><span>Bantuan uang tol</span><NumInput value={f.tambahan_tol} onChange={v => set('tambahan_tol', v)} onCommit={v => set('tambahan_tol', v)} /></label>
+          <label className="adj-retur" style={{ gridColumn: '1 / -1', marginTop: 0 }}><input type="checkbox" checked={f.is_retur} onChange={e => set('is_retur', e.target.checked)} /> Slip untuk retur</label>
+        </div>
+      )}
+
+      <label className="nsf-ket"><span>Keterangan</span><input value={f.keterangan} onChange={e => set('keterangan', e.target.value)} /></label>
+      {err && <div style={{ color: 'var(--urgent)', fontSize: 12, marginTop: 6 }}>{err}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', marginTop: 10 }}>
+        <span style={{ fontWeight: 700 }}>Sisa: {rp(sisa)}</span>
         <div className="btn-group" style={{ marginLeft: 'auto' }}>
           <button className="btn primary" onClick={submit}>Create slip</button>
           <button className="btn ghost" onClick={onCancel}>Cancel</button>
@@ -374,8 +340,6 @@ function SlipPrintH({ d, c, onClose }) {
           <table className="slip-hp-tbl" style={{ marginTop: 8 }}>
             <thead><tr><th colSpan={2}>PENYESUAIAN</th></tr></thead>
             <tbody>
-              {d.selisih_bbm ? <tr><td>Potongan Selisih BBM{d.selisih_bbm_liter ? ` (${fmtId(d.selisih_bbm_liter)} L × ${rp(d.selisih_bbm_price)})` : ''}</td><td className="r">− {rp(d.selisih_bbm)}</td></tr> : null}
-              {d.potongan_pihak ? <tr><td>Potongan {d.potongan_pihak_nama || 'pihak'}</td><td className="r">− {rp(d.potongan_pihak)}</td></tr> : null}
               {d.tambahan_cuci ? <tr><td>Tambahan Cuci Tangki</td><td className="r">+ {rp(d.tambahan_cuci)}</td></tr> : null}
               {d.tambahan_steam ? <tr><td>Tambahan Double Steam</td><td className="r">+ {rp(d.tambahan_steam)}</td></tr> : null}
               {d.tambahan_tol ? <tr><td>Tambahan Bantuan Uang Tol</td><td className="r">+ {rp(d.tambahan_tol)}</td></tr> : null}
