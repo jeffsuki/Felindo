@@ -15,6 +15,7 @@ const netOf = d => Number(d.borongan || 0) - Number(d.selisih_bbm || 0) - Number
 const hasAdj = d => [d.selisih_bbm, d.potongan_pihak, d.tambahan_cuci, d.tambahan_steam, d.tambahan_tol].some(v => v) || d.is_retur
 const tambahanOf = d => Number(d.tambahan_cuci || 0) + Number(d.tambahan_steam || 0) + Number(d.tambahan_tol || 0)
 const potLainOf = d => Number(d.selisih_bbm || 0) + Number(d.potongan_pihak || 0)
+const penyOf = d => tambahanOf(d) - Number(d.selisih_bbm || 0) - Number(d.potongan_pihak || 0)
 const totalBbm = d => (Number(d.bbm_liter || 0) * Number(d.price_per_liter || 0))
 const isFilled = d => d.borongan != null
 const todayStr = () => new Date().toISOString().slice(0, 10)
@@ -146,7 +147,7 @@ export default function FleetSlips() {
                   <tr>
                     <th>Tanggal</th><th>Plat</th><th>Supir</th><th>No. Kontrol</th><th>Asal</th><th>Tujuan</th>
                     <th className="r">Borongan</th><th className="r">BBM L</th><th className="r">Price/L</th><th className="r">Total BBM</th>
-                    <th className="r">Susut</th><th className="r">Ban</th><th className="r">S.Part</th><th className="r">Lain</th><th className="r">PM</th><th className="r">Pot. Lain*</th><th className="r">Tambahan</th>
+                    <th className="r">Susut</th><th className="r">Ban</th><th className="r">S.Part</th><th className="r">Lain</th><th className="r">PM</th><th className="r">Penyesuaian</th>
                     <th className="r">Sisa</th><th>Keterangan</th><th></th>
                   </tr>
                 </thead>
@@ -170,8 +171,7 @@ export default function FleetSlips() {
                         <td><NumInput disabled={locked} value={d.potongan_sparepart} onChange={n => setCell(d.id, 'potongan_sparepart', n)} onCommit={n => saveField(d.id, 'potongan_sparepart', n)} /></td>
                         <td><NumInput disabled={locked} value={d.potongan_lain} onChange={n => setCell(d.id, 'potongan_lain', n)} onCommit={n => saveField(d.id, 'potongan_lain', n)} /></td>
                         <td><NumInput disabled={locked} value={d.potongan_pm} onChange={n => setCell(d.id, 'potongan_pm', n)} onCommit={n => saveField(d.id, 'potongan_pm', n)} /></td>
-                        <td className="mono ro r" title="Selisih BBM + Potongan ANS/MNA (set in Adj)">{potLainOf(d) ? rp(potLainOf(d)) : '—'}</td>
-                        <td className="mono ro r">{tambahanOf(d) ? rp(tambahanOf(d)) : '—'}</td>
+                        <td className="mono ro r" title="Tambahan − Selisih BBM − ANS/MNA (set in Adj)">{penyOf(d) ? rp(penyOf(d)) : '—'}</td>
                         <td className="mono ro r" style={{ fontWeight: 700 }}>{isFilled(d) ? rp(netOf(d)) : '—'}</td>
                         <td><input disabled={locked} value={d.keterangan || ''} onChange={e => setCell(d.id, 'keterangan', e.target.value)} onBlur={e => saveField(d.id, 'keterangan', e.target.value)} /></td>
                         <td className="dk-actions">
