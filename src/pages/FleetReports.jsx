@@ -42,8 +42,8 @@ export default function FleetReports() {
   const T = uj.reduce((a, d) => ({
     tonase: a.tonase + num(d.muatan), borongan: a.borongan + num(d.borongan), ltr: a.ltr + num(d.bbm_liter),
     bbm: a.bbm + num(d.bbm_rupiah), susut: a.susut + num(d.potongan_susut), pm: a.pm + num(d.potongan_pm),
-    lain: a.lain + num(d.potongan_lain), tambahan: a.tambahan + tambahanOf(d), sisa: a.sisa + ujNet(d),
-  }), { tonase: 0, borongan: 0, ltr: 0, bbm: 0, susut: 0, pm: 0, lain: 0, tambahan: 0, sisa: 0 })
+    lain: a.lain + num(d.potongan_lain), sisa: a.sisa + ujNet(d),
+  }), { tonase: 0, borongan: 0, ltr: 0, bbm: 0, susut: 0, pm: 0, lain: 0, sisa: 0 })
   const totalTb = tb.reduce((a, d) => a + tbNet(d), 0)
 
   return (
