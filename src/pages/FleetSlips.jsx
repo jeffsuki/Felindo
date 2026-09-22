@@ -9,7 +9,10 @@ const num = v => (v === null || v === undefined || v === '') ? null : Number(v)
 const JENIS_POT = ['Susut', 'Ganti Ban', 'Ganti Spare Part', 'Lainnya']
 const rp = n => (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString('id-ID')
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
-const netOf = d => Number(d.borongan || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
+const netOf = d => Number(d.borongan || 0) - Number(d.selisih_bbm || 0) - Number(d.potongan_pihak || 0)
+  - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
+  + Number(d.tambahan_cuci || 0) + Number(d.tambahan_steam || 0) + Number(d.tambahan_tol || 0)
+const hasAdj = d => [d.selisih_bbm, d.potongan_pihak, d.tambahan_cuci, d.tambahan_steam, d.tambahan_tol].some(v => v) || d.is_retur
 const totalBbm = d => (Number(d.bbm_liter || 0) * Number(d.price_per_liter || 0))
 const isFilled = d => d.borongan != null
 const todayStr = () => new Date().toISOString().slice(0, 10)
@@ -26,6 +29,7 @@ export default function FleetSlips() {
   const [filter, setFilter] = useState('all')
   const [adding, setAdding] = useState(false)
   const [printId, setPrintId] = useState(null)
+  const [adjFor, setAdjFor] = useState(null)
   const [unlocked, setUnlocked] = useState(new Set())
   const [unlockFor, setUnlockFor] = useState(null)
 
@@ -108,6 +112,12 @@ export default function FleetSlips() {
     if (checkPassword(pw)) { setUnlocked(s => new Set(s).add(unlockFor)); setUnlockFor(null) }
     else show('Wrong password.', true)
   }
+  async function saveAdj(id, patch) {
+    setRows(rs => rs.map(r => r.id === id ? { ...r, ...patch } : r))
+    const { error } = await supabase.from('fleet_deliveries').update(patch).eq('id', id)
+    if (error) return show(error.message, true)
+    show('Adjustments saved.'); setAdjFor(null)
+  }
 
   if (loading) return (<><div className="topbar"><div><h1>Slip Uang Jalan</h1></div></div><div className="content"><Spinner /></div></>)
   const active = rows.find(r => r.id === printId)
@@ -165,6 +175,7 @@ export default function FleetSlips() {
                         <td><input disabled={locked} value={d.keterangan || ''} onChange={e => setCell(d.id, 'keterangan', e.target.value)} onBlur={e => saveField(d.id, 'keterangan', e.target.value)} /></td>
                         <td className="dk-actions">
                           <button className="btn ghost sm" onClick={() => setPrintId(d.id)}>Print</button>
+                          <button className={'btn ghost sm' + (hasAdj(d) ? ' driver-on' : '')} disabled={locked} onClick={() => setAdjFor(d.id)}>Adj{hasAdj(d) ? ' ✓' : ''}</button>
                           {locked
                             ? <button className="btn ghost sm" title="Past-dated — unlock to edit" onClick={() => setUnlockFor(d.id)}>🔒</button>
                             : <button className="btn ghost sm void-btn" onClick={() => { if (confirm('Remove this slip/delivery?')) delRow(d.id) }}>✕</button>}
@@ -179,6 +190,7 @@ export default function FleetSlips() {
         )}
       </div>
       {active && <SlipPrintH d={active} c={active.contract || {}} onClose={() => setPrintId(null)} />}
+      {adjFor && <AdjustModal d={rows.find(r => r.id === adjFor)} onSave={p => saveAdj(adjFor, p)} onClose={() => setAdjFor(null)} />}
       {unlockFor && <UnlockModal onOk={tryUnlock} onCancel={() => setUnlockFor(null)} />}
       {node}
     </>
@@ -196,6 +208,57 @@ function UnlockModal({ onOk, onCancel }) {
         <button className="btn primary wide" type="submit">Unlock</button>
         <button type="button" className="gate-home" onClick={onCancel}>Cancel</button>
       </form>
+    </div>
+  )
+}
+
+function AdjustModal({ d, onSave, onClose }) {
+  const [f, setF] = useState({
+    selisih_bbm: d.selisih_bbm ?? '', potongan_pihak: d.potongan_pihak ?? '', potongan_pihak_nama: d.potongan_pihak_nama || '',
+    tambahan_cuci: d.tambahan_cuci ?? '', tambahan_steam: d.tambahan_steam ?? '', tambahan_tol: d.tambahan_tol ?? '',
+    is_retur: !!d.is_retur,
+  })
+  const set = (k, v) => setF(s => ({ ...s, [k]: v }))
+  const nz = v => (v === '' || v === null || v === undefined) ? null : Number(v)
+  const preview = Number(d.borongan || 0) - Number(nz(f.selisih_bbm) || 0) - Number(nz(f.potongan_pihak) || 0)
+    - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
+    + Number(nz(f.tambahan_cuci) || 0) + Number(nz(f.tambahan_steam) || 0) + Number(nz(f.tambahan_tol) || 0)
+  function save() {
+    onSave({
+      selisih_bbm: nz(f.selisih_bbm), potongan_pihak: nz(f.potongan_pihak), potongan_pihak_nama: f.potongan_pihak_nama.trim() || null,
+      tambahan_cuci: nz(f.tambahan_cuci), tambahan_steam: nz(f.tambahan_steam), tambahan_tol: nz(f.tambahan_tol),
+      is_retur: f.is_retur,
+    })
+  }
+  return (
+    <div className="slip-scrim">
+      <div className="rel-modal" style={{ width: 460 }}>
+        <div className="slip-h" style={{ fontSize: 18 }}>Penyesuaian slip · {d.plate || '—'}</div>
+        <div className="fd-sec">Potongan (kurangi borongan)</div>
+        <div className="adj-grid">
+          <label><span>Selisih BBM</span><NumInput value={f.selisih_bbm} onChange={v => set('selisih_bbm', v)} onCommit={v => set('selisih_bbm', v)} /></label>
+          <label><span>Potongan ANS/MNA</span><NumInput value={f.potongan_pihak} onChange={v => set('potongan_pihak', v)} onCommit={v => set('potongan_pihak', v)} /></label>
+          <label><span>Dari pihak</span>
+            <select value={f.potongan_pihak_nama} onChange={e => set('potongan_pihak_nama', e.target.value)}>
+              <option value="">—</option><option value="ANS">ANS</option><option value="MNA">MNA</option><option value="Lainnya">Lainnya</option>
+            </select>
+          </label>
+        </div>
+        <div className="fd-sec">Tambahan (tambah sisa)</div>
+        <div className="adj-grid">
+          <label><span>Cuci tangki</span><NumInput value={f.tambahan_cuci} onChange={v => set('tambahan_cuci', v)} onCommit={v => set('tambahan_cuci', v)} /></label>
+          <label><span>Double steam</span><NumInput value={f.tambahan_steam} onChange={v => set('tambahan_steam', v)} onCommit={v => set('tambahan_steam', v)} /></label>
+          <label><span>Bantuan uang tol</span><NumInput value={f.tambahan_tol} onChange={v => set('tambahan_tol', v)} onCommit={v => set('tambahan_tol', v)} /></label>
+        </div>
+        <label className="adj-retur"><input type="checkbox" checked={f.is_retur} onChange={e => set('is_retur', e.target.checked)} /> Slip untuk retur</label>
+        <div style={{ display: 'flex', alignItems: 'center', marginTop: 14 }}>
+          <span style={{ fontWeight: 700 }}>Sisa: {rp(preview)}</span>
+          <div className="btn-group" style={{ marginLeft: 'auto' }}>
+            <button className="btn primary" onClick={save}>Save</button>
+            <button className="btn ghost" onClick={onClose}>Cancel</button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -230,7 +293,7 @@ function SlipPrintH({ d, c, onClose }) {
   return (
     <div className="slip-scrim">
       <div className="slip-hp">
-        <div className="slip-h">SLIP UANG JALAN</div>
+        <div className="slip-h">SLIP UANG JALAN{d.is_retur ? ' (RETUR)' : ''}</div>
         <div className="slip-hp-meta">
           <div><b>Plat BK:</b> {d.plate || '—'}</div>
           <div><b>Tanggal DO:</b> {fmtDate(d.tanggal)}</div>
@@ -249,6 +312,18 @@ function SlipPrintH({ d, c, onClose }) {
             <td className="r" style={{ fontWeight: 800 }}>{rp(netOf(d))}</td><td>{d.keterangan || ''}</td>
           </tr></tbody>
         </table>
+        {hasAdj(d) && (
+          <table className="slip-hp-tbl" style={{ marginTop: 8 }}>
+            <thead><tr><th colSpan={2}>PENYESUAIAN</th></tr></thead>
+            <tbody>
+              {d.selisih_bbm ? <tr><td>Potongan Selisih BBM</td><td className="r">− {rp(d.selisih_bbm)}</td></tr> : null}
+              {d.potongan_pihak ? <tr><td>Potongan {d.potongan_pihak_nama || 'pihak'}</td><td className="r">− {rp(d.potongan_pihak)}</td></tr> : null}
+              {d.tambahan_cuci ? <tr><td>Tambahan Cuci Tangki</td><td className="r">+ {rp(d.tambahan_cuci)}</td></tr> : null}
+              {d.tambahan_steam ? <tr><td>Tambahan Double Steam</td><td className="r">+ {rp(d.tambahan_steam)}</td></tr> : null}
+              {d.tambahan_tol ? <tr><td>Tambahan Bantuan Uang Tol</td><td className="r">+ {rp(d.tambahan_tol)}</td></tr> : null}
+            </tbody>
+          </table>
+        )}
         <div className="slip-sign" style={{ marginTop: 40 }}><div>Diterima,</div><div>Hormat kami,</div></div>
       </div>
       <div className="slip-actions no-print">

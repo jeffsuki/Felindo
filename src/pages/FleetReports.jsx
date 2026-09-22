@@ -5,7 +5,7 @@ import { Spinner, Empty, useToast } from '../components/ui'
 const nf = n => (n === null || n === undefined || n === '' || Number(n) === 0) ? '' : Number(n).toLocaleString('id-ID')
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
 const fmtDay = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'long', year: 'numeric' }) : ''
-const ujNet = d => num(d.borongan) - num(d.bbm_rupiah) - num(d.potongan_susut) - num(d.potongan_pm)
+const ujNet = d => num(d.borongan) - num(d.selisih_bbm) - num(d.potongan_pihak) - num(d.bbm_rupiah) - num(d.potongan_susut) - num(d.potongan_pm) + num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol)
 const tbNet = d => num(d.tembak_amount) - num(d.tembak_potongan)
 const rp = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 
@@ -19,7 +19,7 @@ export default function FleetReports() {
   useEffect(() => {
     if (!isConfigured) return
     setLoading(true)
-    const sel = 'id,plate,driver_name,muatan,borongan,bbm_liter,price_per_liter,bbm_rupiah,potongan_susut,potongan_pm,potongan_lain,jenis_potongan,keterangan,tembak_amount,tembak_potongan,tembak_jenis_potongan,contract:fleet_contracts(control_no,origin,destination)'
+    const sel = 'id,plate,driver_name,muatan,borongan,bbm_liter,price_per_liter,bbm_rupiah,potongan_susut,potongan_pm,potongan_lain,jenis_potongan,selisih_bbm,potongan_pihak,tambahan_cuci,tambahan_steam,tambahan_tol,is_retur,keterangan,tembak_amount,tembak_potongan,tembak_jenis_potongan,contract:fleet_contracts(control_no,origin,destination)'
     Promise.all([
       supabase.from('fleet_deliveries').select(sel).eq('tanggal', date).not('borongan', 'is', null),
       supabase.from('fleet_deliveries').select(sel).eq('tembak_released_date', date),
