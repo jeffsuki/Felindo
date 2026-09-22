@@ -365,9 +365,7 @@ textarea { resize: vertical; min-height: 72px; }
 .lb-tbl .lb-adj td { font-size: 10px; color: var(--text-2); border-top: none; padding-top: 1px; padding-bottom: 1px; }
 .nowrap { white-space: nowrap; }
 .lb-caret { color: var(--muted); font-size: 10px; }
-.lb-detail td { background: #FAFBFC; padding: 4px 10px; }
-.lb-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1px 24px; }
-.lb-detail-grid > div { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-2); }
+.lb-detail td { background: #FAFBFC; padding: 2px 8px; font-size: 10.5px; color: var(--text-2); border-top: none; }
 .lb-sign { display: flex; justify-content: space-between; margin-top: 28px; font-size: 12px; text-align: center; }
 .lb-sign > div { flex: 1; }
 

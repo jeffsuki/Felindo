@@ -12,18 +12,19 @@ const penyOf = d => num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambaha
 const tonaseOf = d => num(d.estimasi_muat) || num(d.muatan)
 const detailLines = d => {
   const out = []
-  if (num(d.potongan_susut)) out.push(['Pot Susut', -num(d.potongan_susut)])
-  if (num(d.potongan_ban)) out.push(['Pot Ban', -num(d.potongan_ban)])
-  if (num(d.potongan_sparepart)) out.push(['Pot Spare Part', -num(d.potongan_sparepart)])
-  if (num(d.potongan_pm)) out.push(['PM', -num(d.potongan_pm)])
-  if (num(d.potongan_lain)) out.push(['Pot Lain', -num(d.potongan_lain)])
-  if (num(d.selisih_bbm)) out.push([`Selisih BBM${d.selisih_bbm_liter ? ` (${nf(d.selisih_bbm_liter)}L × ${nf(d.selisih_bbm_price)})` : ''}`, -num(d.selisih_bbm)])
-  if (num(d.potongan_pihak)) out.push([`Potongan ${d.potongan_pihak_nama || 'pihak'}`, -num(d.potongan_pihak)])
-  if (num(d.tambahan_cuci)) out.push(['Cuci tangki', num(d.tambahan_cuci)])
-  if (num(d.tambahan_steam)) out.push(['Double steam', num(d.tambahan_steam)])
-  if (num(d.tambahan_tol)) out.push(['Bantuan uang tol', num(d.tambahan_tol)])
+  if (num(d.potongan_susut)) out.push(['Pot Susut', -num(d.potongan_susut), 'pot'])
+  if (num(d.potongan_ban)) out.push(['Pot Ban', -num(d.potongan_ban), 'pot'])
+  if (num(d.potongan_sparepart)) out.push(['Pot Spare Part', -num(d.potongan_sparepart), 'pot'])
+  if (num(d.potongan_pm)) out.push(['PM', -num(d.potongan_pm), 'pot'])
+  if (num(d.potongan_lain)) out.push(['Pot Lain', -num(d.potongan_lain), 'lain'])
+  if (num(d.selisih_bbm)) out.push([`Selisih BBM${d.selisih_bbm_liter ? ` (${nf(d.selisih_bbm_liter)}L × ${nf(d.selisih_bbm_price)})` : ''}`, -num(d.selisih_bbm), 'peny'])
+  if (num(d.potongan_pihak)) out.push([`Potongan ${d.potongan_pihak_nama || 'pihak'}`, -num(d.potongan_pihak), 'peny'])
+  if (num(d.tambahan_cuci)) out.push(['Cuci tangki', num(d.tambahan_cuci), 'peny'])
+  if (num(d.tambahan_steam)) out.push(['Double steam', num(d.tambahan_steam), 'peny'])
+  if (num(d.tambahan_tol)) out.push(['Bantuan uang tol', num(d.tambahan_tol), 'peny'])
   return out
 }
+const sgn = a => (a < 0 ? '−' : '+') + ' ' + nf(Math.abs(a))
 const adjLines = d => {
   const out = []
   if (num(d.potongan_susut)) out.push({ label: 'Potongan Susut', amt: -num(d.potongan_susut) })
@@ -114,15 +115,16 @@ export default function FleetReports() {
                             <td className="r mono">{nf(potOf(d))}</td><td className="r mono">{nf(lainOf(d))}</td>
                             <td className="r mono">{nf(ujNet(d))}</td><td>{d.keterangan || ''}{det.length ? <span className="lb-caret">{open ? ' ▾' : ' ▸'}</span> : ''}</td>
                           </tr>
-                          {open && (
-                            <tr className="lb-detail"><td colSpan={13}>
-                              <div className="lb-detail-grid">
-                                {det.map(([label, amt], k) => (
-                                  <div key={k}><span>↳ {label}</span><span className="mono">{amt < 0 ? '−' : '+'} {nf(Math.abs(amt))}</span></div>
-                                ))}
-                              </div>
-                            </td></tr>
-                          )}
+                          {open && det.map(([label, amt, grp], k) => (
+                            <tr className="lb-detail" key={d.id + 'd' + k}>
+                              <td></td><td></td><td colSpan={3}>↳ {label}</td>
+                              <td className="r mono">{grp === 'peny' ? sgn(amt) : ''}</td>
+                              <td></td><td></td><td></td>
+                              <td className="r mono">{grp === 'pot' ? sgn(amt) : ''}</td>
+                              <td className="r mono">{grp === 'lain' ? sgn(amt) : ''}</td>
+                              <td></td><td></td>
+                            </tr>
+                          ))}
                         </Fragment>
                       )
                     })}
