@@ -143,7 +143,7 @@ export default function FleetSlips() {
                   <tr>
                     <th>Tanggal</th><th>Plat</th><th>Supir</th><th>No. Kontrol</th><th>Asal</th><th>Tujuan</th>
                     <th className="r">Borongan</th><th className="r">BBM L</th><th className="r">Price/L</th><th className="r">Total BBM</th>
-                    <th className="r">Pot Susut</th><th className="r">Pot PM</th><th>Jenis Potongan</th>
+                    <th className="r">Potongan</th><th className="r">PM</th><th>Jenis Potongan</th>
                     <th className="r">Sisa</th><th>Keterangan</th><th></th>
                   </tr>
                 </thead>
@@ -248,7 +248,7 @@ function AdjustModal({ d, onSave, onClose }) {
 function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   const [f, setF] = useState({
     contract_id: '', truck_id: '', driver_name: '', tanggal: new Date().toISOString().slice(0, 10),
-    borongan: '', bbm_liter: '', price_per_liter: '', potongan_susut: '', potongan_pm: '', jenis_potongan: '',
+    borongan: '', bbm_liter: '', price_per_liter: '', potongan_susut: '', potongan_pm: '40000', jenis_potongan: '',
     tambahan_cuci: '', tambahan_steam: '', tambahan_tol: '', is_retur: false, keterangan: '',
   })
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
@@ -263,6 +263,9 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
 
   function submit() {
     if (!f.contract_id) return setErr('Pick a contract.')
+    if (nz(f.borongan) <= 0) return setErr('Borongan is required.')
+    if (f.potongan_pm === '' || f.potongan_pm === null) return setErr('PM is required.')
+    if (nz(f.potongan_susut) > 0 && !f.jenis_potongan) return setErr('Pick a Jenis Potongan for the potongan.')
     onCreate({
       contract_id: f.contract_id, truck_id: f.truck_id || null, plate: truck?.plate || null,
       driver_name: f.driver_name || null, tanggal: f.tanggal || null,
@@ -277,16 +280,16 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   return (
     <div className="form nsf" style={{ maxWidth: 680 }}>
       <div className="nsf-grid">
-        <label><span>Contract *</span><SearchSelect value={f.contract_id} onChange={v => set('contract_id', v)} placeholder="Pick…" options={contracts.map(c => ({ value: c.id, label: c.control_no, sub: c.client || '', search: c.client || '' }))} /></label>
+        <div className="nsf-f"><span>Contract *</span><SearchSelect value={f.contract_id} onChange={v => set('contract_id', v)} placeholder="Pick…" options={contracts.map(c => ({ value: c.id, label: c.control_no, sub: c.client || '', search: c.client || '' }))} /></div>
         <label><span>Date</span><input type="date" value={f.tanggal} onChange={e => set('tanggal', e.target.value)} /></label>
-        <label><span>Truck</span><SearchSelect value={f.truck_id} onChange={v => set('truck_id', v)} placeholder="Pick…" options={trucks.map(t => ({ value: t.id, label: t.plate }))} /></label>
-        <label><span>Driver</span><SearchSelect value={f.driver_name} onChange={v => set('driver_name', v)} placeholder="Pick…" options={drivers.map(d => ({ value: d.name, label: d.nickname ? `${d.name} (${d.nickname})` : d.name }))} /></label>
-        <label><span>Borongan</span><NumInput value={f.borongan} onChange={v => set('borongan', v)} onCommit={v => set('borongan', v)} /></label>
+        <div className="nsf-f"><span>Truck</span><SearchSelect value={f.truck_id} onChange={v => set('truck_id', v)} placeholder="Pick…" options={trucks.map(t => ({ value: t.id, label: t.plate }))} /></div>
+        <div className="nsf-f"><span>Driver</span><SearchSelect value={f.driver_name} onChange={v => set('driver_name', v)} placeholder="Pick…" options={drivers.map(d => ({ value: d.name, label: d.nickname ? `${d.name} (${d.nickname})` : d.name }))} /></div>
+        <label><span>Borongan *</span><NumInput value={f.borongan} onChange={v => set('borongan', v)} onCommit={v => set('borongan', v)} /></label>
         <label><span>Jenis Potongan</span><select value={f.jenis_potongan} onChange={e => set('jenis_potongan', e.target.value)}><option value="">—</option>{JENIS_POT.map(j => <option key={j} value={j}>{j}</option>)}</select></label>
         <label><span>BBM Liter</span><NumInput value={f.bbm_liter} onChange={v => set('bbm_liter', v)} onCommit={v => set('bbm_liter', v)} /></label>
         <label><span>BBM Price/L</span><NumInput value={f.price_per_liter} onChange={v => set('price_per_liter', v)} onCommit={v => set('price_per_liter', v)} /></label>
-        <label><span>Pot Susut</span><NumInput value={f.potongan_susut} onChange={v => set('potongan_susut', v)} onCommit={v => set('potongan_susut', v)} /></label>
-        <label><span>Pot PM</span><NumInput value={f.potongan_pm} onChange={v => set('potongan_pm', v)} onCommit={v => set('potongan_pm', v)} /></label>
+        <label><span>Potongan</span><NumInput value={f.potongan_susut} onChange={v => set('potongan_susut', v)} onCommit={v => set('potongan_susut', v)} /></label>
+        <label><span>PM *</span><NumInput value={f.potongan_pm} onChange={v => set('potongan_pm', v)} onCommit={v => set('potongan_pm', v)} /></label>
       </div>
       <div className="nsf-note">Total BBM: {rp(totalBbm)}</div>
 
@@ -327,7 +330,7 @@ function SlipPrintH({ d, c, onClose }) {
         <table className="slip-hp-tbl">
           <thead><tr>
             <th>NO</th><th>NOMOR KONTROL</th><th>ASAL</th><th>TUJUAN</th><th>JUMLAH BORONGAN</th>
-            <th>BBM LITER</th><th>PRICE/L</th><th>TOTAL BBM</th><th>POT. SUSUT</th><th>POT. PM</th><th>SISA BORONGAN</th><th>KETERANGAN</th>
+            <th>BBM LITER</th><th>PRICE/L</th><th>TOTAL BBM</th><th>POTONGAN</th><th>PM</th><th>SISA BORONGAN</th><th>KETERANGAN</th>
           </tr></thead>
           <tbody><tr>
             <td>{d.do_no}</td><td>{c.control_no || '—'}</td><td>{c.origin || '—'}</td><td>{c.destination || '—'}</td>

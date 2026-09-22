@@ -10,6 +10,7 @@ import FleetSlips from './pages/FleetSlips'
 import FleetTembak from './pages/FleetTembak'
 import FleetTembakDriver from './pages/FleetTembakDriver'
 import FleetReports from './pages/FleetReports'
+import FleetHutang from './pages/FleetHutang'
 import FleetHistory from './pages/FleetHistory'
 import FleetHistoryDetail from './pages/FleetHistoryDetail'
 import WarehouseHome from './pages/WarehouseHome'
@@ -47,6 +48,7 @@ function Fleet() {
         <Route path="tembak" element={<FleetTembak />} />
         <Route path="tembak/:name" element={<FleetTembakDriver />} />
         <Route path="reports" element={<FleetReports />} />
+        <Route path="hutang" element={<FleetHutang />} />
         <Route path="history" element={<FleetHistory />} />
         <Route path="history/:mode/:key" element={<FleetHistoryDetail />} />
         <Route path="registers" element={<FleetRegisters />} />

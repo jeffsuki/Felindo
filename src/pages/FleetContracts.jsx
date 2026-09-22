@@ -136,7 +136,7 @@ function ContractForm({ clients, locations, initial, onSave, onCancel }) {
     contract_no: initial?.contract_no || '', do_contract_no: initial?.do_contract_no || '',
     client: initial?.client || '', origin: initial?.origin || '', destination: initial?.destination || '',
     commodity: initial?.commodity || 'CPO', quantity_kg: initial?.quantity_kg ?? '',
-    distance_km: initial?.distance_km ?? '',
+    distance_km: initial?.distance_km ?? '', price_per_kg: initial?.price_per_kg ?? '',
     susut_pct: initial?.susut_tolerance != null ? String(Number(initial.susut_tolerance) * 100) : '0.2',
     jenis_truk: initial?.jenis_truk || 'Tangki', note: initial?.note || '',
   })
@@ -156,6 +156,7 @@ function ContractForm({ clients, locations, initial, onSave, onCancel }) {
       client: f.client || null, origin: f.origin || null, destination: f.destination || null,
       commodity: f.commodity.trim() || null, quantity_kg: f.quantity_kg === '' ? null : Number(f.quantity_kg),
       distance_km: f.distance_km === '' ? null : Number(f.distance_km),
+      price_per_kg: f.price_per_kg === '' ? null : Number(f.price_per_kg),
       susut_tolerance: f.susut_pct === '' ? null : Number(f.susut_pct) / 100,
       jenis_truk: f.jenis_truk || null, note: f.note.trim() || null,
     })
