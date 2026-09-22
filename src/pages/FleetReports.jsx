@@ -49,7 +49,7 @@ export default function FleetReports() {
     tonase: a.tonase + num(d.muatan), borongan: a.borongan + num(d.borongan), ltr: a.ltr + num(d.bbm_liter),
     bbm: a.bbm + num(d.bbm_rupiah), pot: a.pot + potOf(d), pm: a.pm + num(d.potongan_pm),
     lain: a.lain + num(d.potongan_lain), sisa: a.sisa + ujNet(d),
-  }), { tonase: 0, borongan: 0, ltr: 0, bbm: 0, susut: 0, ban: 0, sparepart: 0, lain: 0, pm: 0, sisa: 0 })
+  }), { tonase: 0, borongan: 0, ltr: 0, bbm: 0, adj: 0, susut: 0, ban: 0, sparepart: 0, lain: 0, pm: 0, sisa: 0 })
   const totalTb = tb.reduce((a, d) => a + tbNet(d), 0)
 
   return (
@@ -73,26 +73,26 @@ export default function FleetReports() {
                 <tr>
                   <th rowSpan={2}>No</th><th rowSpan={2}>BK</th><th rowSpan={2}>Nama Supir</th><th rowSpan={2} className="r">Tonase</th>
                   <th rowSpan={2} className="r">Borongan</th><th colSpan={3} className="c">BBM</th>
-                  <th rowSpan={2} className="r">Sisa</th><th rowSpan={2}>Keterangan</th>
+                  <th rowSpan={2} className="r">Potongan / Tambahan</th><th rowSpan={2} className="r">Sisa</th><th rowSpan={2}>Keterangan</th>
                 </tr>
                 <tr><th className="r">Ltr</th><th className="r">BBM/L</th><th className="r">Total BBM</th></tr>
               </thead>
               <tbody>
                 {ujGroups.map(([r, list]) => (
                   <Fragment key={r}>
-                    <tr className="lb-group"><td colSpan={10}>{r}{list[0].contract?.control_no ? ` · ${list[0].contract.control_no}` : ''}</td></tr>
+                    <tr className="lb-group"><td colSpan={11}>{r}{list[0].contract?.control_no ? ` · ${list[0].contract.control_no}` : ''}</td></tr>
                     {list.map((d, i) => (
                       <Fragment key={d.id}>
                         <tr>
                           <td>{i + 1}</td><td className="mono">{d.plate || '—'}</td><td>{d.driver_name || '—'}{d.is_retur ? ' (Retur)' : ''}</td>
                           <td className="r mono">{nf(d.muatan)}</td><td className="r mono">{nf(d.borongan)}</td>
                           <td className="r mono">{nf(d.bbm_liter)}</td><td className="r mono">{nf(d.price_per_liter)}</td><td className="r mono">{nf(d.bbm_rupiah)}</td>
-                          <td className="r mono">{nf(ujNet(d))}</td><td>{d.keterangan || ''}</td>
+                          <td></td><td className="r mono">{nf(ujNet(d))}</td><td>{d.keterangan || ''}</td>
                         </tr>
                         {adjLines(d).map((a, k) => (
                           <tr className="lb-adj" key={d.id + 'a' + k}>
                             <td></td><td></td><td colSpan={6}>↳ {a.label}</td>
-                            <td className="r mono">{a.amt < 0 ? '−' : '+'} {nf(Math.abs(a.amt))}</td><td></td>
+                            <td className="r mono">{a.amt < 0 ? '−' : '+'} {nf(Math.abs(a.amt))}</td><td></td><td></td>
                           </tr>
                         ))}
                       </Fragment>
@@ -102,7 +102,7 @@ export default function FleetReports() {
                 <tr className="lb-total">
                   <td colSpan={3}>Total</td><td className="r mono">{nf(T.tonase)}</td><td className="r mono">{nf(T.borongan)}</td>
                   <td className="r mono">{nf(T.ltr)}</td><td></td><td className="r mono">{nf(T.bbm)}</td>
-                  <td className="r mono">{nf(T.sisa)}</td><td></td>
+                  <td className="r mono">{nf(T.adj)}</td><td className="r mono">{nf(T.sisa)}</td><td></td>
                 </tr>
               </tbody>
             </table></div>
