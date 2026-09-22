@@ -10,6 +10,20 @@ const potOf = d => num(d.potongan_susut) + num(d.potongan_ban) + num(d.potongan_
 const lainOf = d => num(d.potongan_lain)
 const penyOf = d => num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol) - num(d.selisih_bbm) - num(d.potongan_pihak)
 const tonaseOf = d => num(d.estimasi_muat) || num(d.muatan)
+const detailLines = d => {
+  const out = []
+  if (num(d.potongan_susut)) out.push(['Pot Susut', -num(d.potongan_susut)])
+  if (num(d.potongan_ban)) out.push(['Pot Ban', -num(d.potongan_ban)])
+  if (num(d.potongan_sparepart)) out.push(['Pot Spare Part', -num(d.potongan_sparepart)])
+  if (num(d.potongan_pm)) out.push(['PM', -num(d.potongan_pm)])
+  if (num(d.potongan_lain)) out.push(['Pot Lain', -num(d.potongan_lain)])
+  if (num(d.selisih_bbm)) out.push([`Selisih BBM${d.selisih_bbm_liter ? ` (${nf(d.selisih_bbm_liter)}L × ${nf(d.selisih_bbm_price)})` : ''}`, -num(d.selisih_bbm)])
+  if (num(d.potongan_pihak)) out.push([`Potongan ${d.potongan_pihak_nama || 'pihak'}`, -num(d.potongan_pihak)])
+  if (num(d.tambahan_cuci)) out.push(['Cuci tangki', num(d.tambahan_cuci)])
+  if (num(d.tambahan_steam)) out.push(['Double steam', num(d.tambahan_steam)])
+  if (num(d.tambahan_tol)) out.push(['Bantuan uang tol', num(d.tambahan_tol)])
+  return out
+}
 const adjLines = d => {
   const out = []
   if (num(d.potongan_susut)) out.push({ label: 'Potongan Susut', amt: -num(d.potongan_susut) })
@@ -33,6 +47,8 @@ export default function FleetReports() {
   const [uj, setUj] = useState([])
   const [tb, setTb] = useState([])
   const [loading, setLoading] = useState(false)
+  const [openRows, setOpenRows] = useState(() => new Set())
+  const toggleRow = id => setOpenRows(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
 
   useEffect(() => {
     if (!isConfigured) return
@@ -60,6 +76,8 @@ export default function FleetReports() {
       <div className="topbar">
         <div><h1>Daily report</h1><div className="sub">Laporan Borongan & Uang Tembak</div></div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {(() => { const ids = uj.filter(d => detailLines(d).length).map(d => d.id); const allOpen = ids.length > 0 && ids.every(id => openRows.has(id));
+            return ids.length > 0 ? <button className="btn ghost no-print" onClick={() => setOpenRows(allOpen ? new Set() : new Set(ids))}>{allOpen ? 'Collapse all' : 'Expand all'}</button> : null })()}
           <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ width: 'auto' }} />
           <button className="btn ghost no-print" onClick={() => window.print()}>Print</button>
         </div>
@@ -84,15 +102,30 @@ export default function FleetReports() {
                 {ujGroups.map(([r, list]) => (
                   <Fragment key={r}>
                     <tr className="lb-group"><td colSpan={13}>{r}{list[0].contract?.control_no ? ` · ${list[0].contract.control_no}` : ''}</td></tr>
-                    {list.map((d, i) => (
-                      <tr key={d.id}>
-                        <td>{i + 1}</td><td className="mono">{d.plate || '—'}</td><td>{d.driver_name || '—'}{d.is_retur ? ' (Retur)' : ''}</td>
-                        <td className="r mono">{nf(tonaseOf(d))}</td><td className="r mono">{nf(d.borongan)}</td><td className="r mono">{penyOf(d) ? nf(penyOf(d)) : ''}</td>
-                        <td className="r mono">{nf(d.bbm_liter)}</td><td className="r mono">{nf(d.price_per_liter)}</td><td className="r mono">{nf(d.bbm_rupiah)}</td>
-                        <td className="r mono">{nf(potOf(d))}</td><td className="r mono">{nf(lainOf(d))}</td>
-                        <td className="r mono">{nf(ujNet(d))}</td><td>{d.keterangan || ''}</td>
-                      </tr>
-                    ))}
+                    {list.map((d, i) => {
+                      const det = detailLines(d)
+                      const open = openRows.has(d.id)
+                      return (
+                        <Fragment key={d.id}>
+                          <tr className={det.length ? 'clickrow' : ''} onClick={() => det.length && toggleRow(d.id)}>
+                            <td>{i + 1}</td><td className="mono nowrap">{d.plate || '—'}</td><td>{d.driver_name || '—'}{d.is_retur ? ' (Retur)' : ''}</td>
+                            <td className="r mono">{nf(tonaseOf(d))}</td><td className="r mono">{nf(d.borongan)}</td><td className="r mono">{penyOf(d) ? nf(penyOf(d)) : ''}</td>
+                            <td className="r mono">{nf(d.bbm_liter)}</td><td className="r mono">{nf(d.price_per_liter)}</td><td className="r mono">{nf(d.bbm_rupiah)}</td>
+                            <td className="r mono">{nf(potOf(d))}</td><td className="r mono">{nf(lainOf(d))}</td>
+                            <td className="r mono">{nf(ujNet(d))}</td><td>{d.keterangan || ''}{det.length ? <span className="lb-caret">{open ? ' ▾' : ' ▸'}</span> : ''}</td>
+                          </tr>
+                          {open && (
+                            <tr className="lb-detail"><td colSpan={13}>
+                              <div className="lb-detail-grid">
+                                {det.map(([label, amt], k) => (
+                                  <div key={k}><span>↳ {label}</span><span className="mono">{amt < 0 ? '−' : '+'} {nf(Math.abs(amt))}</span></div>
+                                ))}
+                              </div>
+                            </td></tr>
+                          )}
+                        </Fragment>
+                      )
+                    })}
                   </Fragment>
                 ))}
                 <tr className="lb-total">
