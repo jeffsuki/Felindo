@@ -2,6 +2,8 @@ import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Spinner, Empty, useToast } from '../components/ui'
+import { NumInput } from '../components/NumInput'
+import SearchSelect from '../components/SearchSelect'
 
 const rp = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
@@ -11,13 +13,15 @@ const claimRp = d => claimKg(d) * num(d.contract?.price_per_kg)
 const TABS = [['ringkasan', 'Hutang Supir'], ['susut', 'Susut'], ['sparepart', 'Spare Part'], ['ban', 'Ban'], ['kasbon', 'Kasbon'], ['bbm', 'BBM (L)']]
 
 export default function FleetHutang() {
-  const { node } = useToast()
+  const { node, show } = useToast()
   const nav = useNavigate()
   const [dels, setDels] = useState([])
   const [claims, setClaims] = useState([])
   const [loans, setLoans] = useState([])
   const [repays, setRepays] = useState([])
   const [drvStatus, setDrvStatus] = useState({})
+  const [activeDrivers, setActiveDrivers] = useState([])
+  const [addOpen, setAddOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('ringkasan')
   const [q, setQ] = useState('')
@@ -29,12 +33,13 @@ export default function FleetHutang() {
     const [dl, cl, dr, ln, rp2] = await Promise.all([
       supabase.from('fleet_deliveries').select('driver_name,muatan,bongkar,potongan_susut,potongan_ban,potongan_sparepart,potongan_kasbon,bbm_loan_liter,contract:fleet_contracts(susut_tolerance,price_per_kg)').not('driver_name', 'is', null),
       supabase.from('fleet_driver_claims').select('driver_name,jenis,amount'),
-      supabase.from('drivers').select('name,status'),
+      supabase.from('drivers').select('name,nickname,status'),
       supabase.from('fleet_driver_loans').select('driver_name,jenis,amount,liter'),
       supabase.from('fleet_driver_loan_repayments').select('driver_name,amount'),
     ])
     setDels(dl.data || []); setClaims(cl.data || []); setLoans(ln.data || []); setRepays(rp2.data || [])
     const m = {}; (dr.data || []).forEach(d => { m[d.name] = d.status }); setDrvStatus(m)
+    setActiveDrivers((dr.data || []).filter(d => d.status === 'Active'))
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -72,6 +77,18 @@ export default function FleetHutang() {
     })
   }, [accounts, q, statusFilter, drvStatus, tab])
 
+  async function addEntry({ driver, type, amount, tanggal, note }) {
+    if (!driver) return show('Pick a driver.', true)
+    const amt = num(amount)
+    let error
+    if (type === 'kasbon') ({ error } = await supabase.from('fleet_driver_loans').insert({ driver_name: driver, jenis: 'Cash', amount: amt, tanggal: tanggal || null, note: note || null }))
+    else if (type === 'bbm') ({ error } = await supabase.from('fleet_driver_loans').insert({ driver_name: driver, jenis: 'BBM', liter: amt, tanggal: tanggal || null, note: note || null }))
+    else if (type === 'ban') ({ error } = await supabase.from('fleet_driver_claims').insert({ driver_name: driver, jenis: 'Ganti Ban', amount: amt, tanggal: tanggal || null, note: note || null }))
+    else if (type === 'sparepart') ({ error } = await supabase.from('fleet_driver_claims').insert({ driver_name: driver, jenis: 'Ganti Spare Part', amount: amt, tanggal: tanggal || null, note: note || null }))
+    if (error) return show(error.message, true)
+    show('Added.'); setAddOpen(false); load()
+  }
+
   function go(driver) { nav('/fleet/hutang/' + encodeURIComponent(driver)) }
   if (loading) return (<><div className="topbar"><div><h1>Hutang Supir</h1></div></div><div className="content"><Spinner /></div></>)
 
@@ -87,6 +104,7 @@ export default function FleetHutang() {
         <div className="controls">
           <div className="field grow"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search driver…" /></div>
           <div className="seg-lens">{[['all', 'All'], ['active', 'Active'], ['inactive', 'Inactive']].map(([v, l]) => (<button key={v} className={statusFilter === v ? 'on' : ''} onClick={() => setStatusFilter(v)}>{l}</button>))}</div>
+          <button className="btn primary" onClick={() => setAddOpen(true)}>+ Add entry</button>
         </div>
         {filtered.length === 0 ? <Empty title="Nothing here">No drivers to show.</Empty> : (
           <div className="dk-wrap"><table className="dk-tbl ct-tbl">
@@ -125,7 +143,45 @@ export default function FleetHutang() {
           </table></div>
         )}
       </div>
+      {addOpen && <AddEntryModal drivers={activeDrivers} onSave={addEntry} onClose={() => setAddOpen(false)} />}
       {node}
     </>
+  )
+}
+
+function AddEntryModal({ drivers, onSave, onClose }) {
+  const [driver, setDriver] = useState('')
+  const [type, setType] = useState('kasbon')
+  const [amount, setAmount] = useState('')
+  const [tanggal, setTanggal] = useState(new Date().toISOString().slice(0, 10))
+  const [note, setNote] = useState('')
+  const isBbm = type === 'bbm'
+  return (
+    <div className="slip-scrim">
+      <div className="rel-modal" style={{ width: 440 }}>
+        <div className="slip-h" style={{ fontSize: 18 }}>Add entry</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 12 }}>
+          <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.03em', color: 'var(--muted)' }}>Driver</span>
+          <SearchSelect value={driver} onChange={setDriver} placeholder="Pick driver…" options={drivers.map(d => ({ value: d.name, label: d.nickname ? `${d.name} (${d.nickname})` : d.name }))} />
+        </div>
+        <div className="adj-grid" style={{ marginTop: 10 }}>
+          <label><span>Type</span><select value={type} onChange={e => setType(e.target.value)}>
+            <option value="kasbon">Kasbon (cash loan)</option>
+            <option value="bbm">BBM Pinjaman (liter)</option>
+            <option value="ban">Claim Ban</option>
+            <option value="sparepart">Claim Spare Part</option>
+          </select></label>
+          <label><span>{isBbm ? 'Liter' : 'Amount'}</span><NumInput value={amount} onChange={setAmount} onCommit={setAmount} /></label>
+        </div>
+        <div className="adj-grid" style={{ marginTop: 8 }}>
+          <label><span>Date</span><input type="date" value={tanggal} onChange={e => setTanggal(e.target.value)} /></label>
+          <label><span>Note</span><input value={note} onChange={e => setNote(e.target.value)} /></label>
+        </div>
+        <div className="btn-group" style={{ marginTop: 14 }}>
+          <button className="btn primary" onClick={() => onSave({ driver, type, amount, tanggal, note })}>Save</button>
+          <button className="btn ghost" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
   )
 }

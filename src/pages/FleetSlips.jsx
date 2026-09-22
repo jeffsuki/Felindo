@@ -145,10 +145,10 @@ export default function FleetSlips() {
               <table className="dk-tbl slip-grid">
                 <thead>
                   <tr>
-                    <th>Tanggal</th><th>Plat</th><th>Supir</th><th>No. Kontrol</th><th>Asal</th><th>Tujuan</th>
+                    <th></th><th>Tanggal</th><th>Plat</th><th>Supir</th><th>No. Kontrol</th><th>Asal</th><th>Tujuan</th>
                     <th className="r">Borongan</th><th className="r">BBM L</th><th className="r">Price/L</th><th className="r">Total BBM</th>
                     <th className="r">Susut</th><th className="r">Ban</th><th className="r">S.Part</th><th className="r">Lain</th><th className="r">PM</th><th className="r">Kasbon</th><th className="r">BBM Pinj (L)</th><th className="r">Penyesuaian</th>
-                    <th className="r">Sisa</th><th>Keterangan</th><th></th>
+                    <th className="r">Sisa</th><th>Keterangan</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -156,6 +156,13 @@ export default function FleetSlips() {
                     const locked = isLocked(d)
                     return (
                       <tr key={d.id} className={locked ? 'row-locked' : ''}>
+                        <td className="dk-actions">
+                          <button className="btn ghost sm" onClick={() => setPrintId(d.id)}>Print</button>
+                          <button className={'btn ghost sm' + (hasAdj(d) ? ' driver-on' : '')} disabled={locked} onClick={() => setAdjFor(d.id)}>Adj{hasAdj(d) ? ' ✓' : ''}</button>
+                          {locked
+                            ? <button className="btn ghost sm" title="Past-dated — unlock to edit" onClick={() => setUnlockFor(d.id)}>🔒</button>
+                            : <button className="btn ghost sm void-btn" onClick={() => { if (confirm('Remove this slip/delivery?')) delRow(d.id) }}>✕</button>}
+                        </td>
                         <td><input type="date" disabled={locked} value={d.tanggal || ''} onChange={e => setCell(d.id, 'tanggal', e.target.value)} onBlur={e => saveField(d.id, 'tanggal', e.target.value)} /></td>
                         <td><select disabled={locked} value={d.truck_id || ''} onChange={e => saveTruck(d.id, e.target.value)}><option value="">{d.plate || '—'}</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></td>
                         <td><select disabled={locked} value={d.driver_name || ''} onChange={e => { setCell(d.id, 'driver_name', e.target.value); saveField(d.id, 'driver_name', e.target.value) }}><option value="">—</option>{drivers.map(dr => <option key={dr.name} value={dr.name}>{dr.name}</option>)}{d.driver_name && !drivers.some(x => x.name === d.driver_name) && <option value={d.driver_name}>{d.driver_name}</option>}</select></td>
@@ -176,13 +183,6 @@ export default function FleetSlips() {
                         <td className="mono ro r" title="Tambahan − Selisih BBM − ANS/MNA (set in Adj)">{penyOf(d) ? rp(penyOf(d)) : '—'}</td>
                         <td className="mono ro r" style={{ fontWeight: 700 }}>{isFilled(d) ? rp(netOf(d)) : '—'}</td>
                         <td><input disabled={locked} value={d.keterangan || ''} onChange={e => setCell(d.id, 'keterangan', e.target.value)} onBlur={e => saveField(d.id, 'keterangan', e.target.value)} /></td>
-                        <td className="dk-actions">
-                          <button className="btn ghost sm" onClick={() => setPrintId(d.id)}>Print</button>
-                          <button className={'btn ghost sm' + (hasAdj(d) ? ' driver-on' : '')} disabled={locked} onClick={() => setAdjFor(d.id)}>Adj{hasAdj(d) ? ' ✓' : ''}</button>
-                          {locked
-                            ? <button className="btn ghost sm" title="Past-dated — unlock to edit" onClick={() => setUnlockFor(d.id)}>🔒</button>
-                            : <button className="btn ghost sm void-btn" onClick={() => { if (confirm('Remove this slip/delivery?')) delRow(d.id) }}>✕</button>}
-                        </td>
                       </tr>
                     )
                   })}
@@ -279,9 +279,28 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
   const [err, setErr] = useState('')
   const [showAdj, setShowAdj] = useState(false)
+  const [outstanding, setOutstanding] = useState({ kasbon: 0, bbm: 0 })
   const nz = v => (v === '' || v === null || v === undefined) ? 0 : Number(v)
   const orNull = v => (v === '' || v === null || v === undefined) ? null : Number(v)
   const truck = trucks.find(t => t.id === f.truck_id)
+
+  useEffect(() => {
+    if (!f.driver_name) { setOutstanding({ kasbon: 0, bbm: 0 }); return }
+    let alive = true
+    ;(async () => {
+      const [ln, rpm, dl] = await Promise.all([
+        supabase.from('fleet_driver_loans').select('jenis,amount,liter').eq('driver_name', f.driver_name),
+        supabase.from('fleet_driver_loan_repayments').select('amount').eq('driver_name', f.driver_name),
+        supabase.from('fleet_deliveries').select('potongan_kasbon,bbm_loan_liter').eq('driver_name', f.driver_name),
+      ])
+      if (!alive) return
+      let kC = 0, bC = 0; (ln.data || []).forEach(l => { if (l.jenis === 'Cash') kC += nz(l.amount); else if (l.jenis === 'BBM') bC += nz(l.liter) })
+      let kP = 0, bP = 0; (dl.data || []).forEach(d => { kP += nz(d.potongan_kasbon); bP += nz(d.bbm_loan_liter) }); (rpm.data || []).forEach(r => { kP += nz(r.amount) })
+      setOutstanding({ kasbon: kC - kP, bbm: bC - bP })
+    })()
+    return () => { alive = false }
+  }, [f.driver_name])
+
   const totalBbm = nz(f.bbm_liter) * nz(f.price_per_liter)
   const selisih = nz(f.selisih_liter) * nz(f.selisih_price)
   const potTot = nz(f.potongan_susut) + nz(f.potongan_ban) + nz(f.potongan_sparepart) + nz(f.potongan_lain) + nz(f.potongan_pm) + nz(f.potongan_kasbon) + nz(f.bbm_loan_liter) * nz(f.price_per_liter)
@@ -292,6 +311,8 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
     if (!f.contract_id) return setErr('Pick a contract.')
     if (nz(f.borongan) <= 0) return setErr('Borongan is required.')
     if (f.potongan_pm === '' || f.potongan_pm === null) return setErr('PM is required.')
+    if (nz(f.potongan_kasbon) > outstanding.kasbon) return setErr(`Pot Kasbon melebihi sisa kasbon (${rp(outstanding.kasbon)}).`)
+    if (nz(f.bbm_loan_liter) > outstanding.bbm) return setErr(`BBM Pinjaman melebihi sisa BBM (${outstanding.bbm.toLocaleString('id-ID')} L).`)
     onCreate({
       contract_id: f.contract_id, truck_id: f.truck_id || null, plate: truck?.plate || null,
       driver_name: f.driver_name || null, tanggal: f.tanggal || null,
@@ -321,8 +342,10 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
         <label><span>Pot Spare Part</span><NumInput value={f.potongan_sparepart} onChange={v => set('potongan_sparepart', v)} onCommit={v => set('potongan_sparepart', v)} /></label>
         <label><span>Pot Lain</span><NumInput value={f.potongan_lain} onChange={v => set('potongan_lain', v)} onCommit={v => set('potongan_lain', v)} /></label>
         <label><span>PM *</span><NumInput value={f.potongan_pm} onChange={v => set('potongan_pm', v)} onCommit={v => set('potongan_pm', v)} /></label>
-        <label><span>Pot Kasbon</span><NumInput value={f.potongan_kasbon} onChange={v => set('potongan_kasbon', v)} onCommit={v => set('potongan_kasbon', v)} /></label>
-        <label><span>BBM Pinjaman (L)</span><NumInput value={f.bbm_loan_liter} onChange={v => set('bbm_loan_liter', v)} onCommit={v => set('bbm_loan_liter', v)} /></label>
+        <label><span>Pot Kasbon</span><NumInput value={f.potongan_kasbon} onChange={v => set('potongan_kasbon', v)} onCommit={v => set('potongan_kasbon', v)} />
+          {f.driver_name ? <span className="nsf-out">Sisa: {rp(outstanding.kasbon)}{outstanding.kasbon > 0 ? <button type="button" className="nsf-deduct" onClick={() => set('potongan_kasbon', String(outstanding.kasbon))}>Deduct</button> : null}</span> : null}</label>
+        <label><span>BBM Pinjaman (L)</span><NumInput value={f.bbm_loan_liter} onChange={v => set('bbm_loan_liter', v)} onCommit={v => set('bbm_loan_liter', v)} />
+          {f.driver_name ? <span className="nsf-out">Sisa: {outstanding.bbm.toLocaleString('id-ID')} L{outstanding.bbm > 0 ? <button type="button" className="nsf-deduct" onClick={() => set('bbm_loan_liter', String(outstanding.bbm))}>Deduct</button> : null}</span> : null}</label>
       </div>
       <div className="nsf-note">Total BBM: {rp(totalBbm)}</div>
 
