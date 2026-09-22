@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, Fragment } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Spinner, Empty, useToast } from '../components/ui'
 
@@ -6,6 +6,15 @@ const nf = n => (n === null || n === undefined || n === '' || Number(n) === 0) ?
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
 const fmtDay = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'long', year: 'numeric' }) : ''
 const ujNet = d => num(d.borongan) - num(d.selisih_bbm) - num(d.potongan_pihak) - num(d.bbm_rupiah) - num(d.potongan_susut) - num(d.potongan_pm) + num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol)
+const adjLines = d => {
+  const out = []
+  if (num(d.selisih_bbm)) out.push({ label: `Selisih BBM${d.selisih_bbm_liter ? ` (${nf(d.selisih_bbm_liter)}L × ${nf(d.selisih_bbm_price)})` : ''}`, amt: -num(d.selisih_bbm) })
+  if (num(d.potongan_pihak)) out.push({ label: `Potongan ${d.potongan_pihak_nama || 'pihak'}`, amt: -num(d.potongan_pihak) })
+  if (num(d.tambahan_cuci)) out.push({ label: 'Cuci tangki', amt: num(d.tambahan_cuci) })
+  if (num(d.tambahan_steam)) out.push({ label: 'Double steam', amt: num(d.tambahan_steam) })
+  if (num(d.tambahan_tol)) out.push({ label: 'Bantuan uang tol', amt: num(d.tambahan_tol) })
+  return out
+}
 const tbNet = d => num(d.tembak_amount) - num(d.tembak_potongan)
 const rp = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 
@@ -19,7 +28,7 @@ export default function FleetReports() {
   useEffect(() => {
     if (!isConfigured) return
     setLoading(true)
-    const sel = 'id,plate,driver_name,muatan,borongan,bbm_liter,price_per_liter,bbm_rupiah,potongan_susut,potongan_pm,potongan_lain,jenis_potongan,selisih_bbm,potongan_pihak,tambahan_cuci,tambahan_steam,tambahan_tol,is_retur,keterangan,tembak_amount,tembak_potongan,tembak_jenis_potongan,contract:fleet_contracts(control_no,origin,destination)'
+    const sel = 'id,plate,driver_name,muatan,borongan,bbm_liter,price_per_liter,bbm_rupiah,potongan_susut,potongan_pm,potongan_lain,jenis_potongan,selisih_bbm,selisih_bbm_liter,selisih_bbm_price,potongan_pihak,potongan_pihak_nama,tambahan_cuci,tambahan_steam,tambahan_tol,is_retur,keterangan,tembak_amount,tembak_potongan,tembak_jenis_potongan,contract:fleet_contracts(control_no,origin,destination)'
     Promise.all([
       supabase.from('fleet_deliveries').select(sel).eq('tanggal', date).not('borongan', 'is', null),
       supabase.from('fleet_deliveries').select(sel).eq('tembak_released_date', date),
@@ -64,18 +73,26 @@ export default function FleetReports() {
               </thead>
               <tbody>
                 {ujGroups.map(([r, list]) => (
-                  <>
+                  <Fragment key={r}>
                     <tr className="lb-group"><td colSpan={12}>{r}{list[0].contract?.control_no ? ` · ${list[0].contract.control_no}` : ''}</td></tr>
                     {list.map((d, i) => (
-                      <tr key={d.id}>
-                        <td>{i + 1}</td><td className="mono">{d.plate || '—'}</td><td>{d.driver_name || '—'}</td>
-                        <td className="r mono">{nf(d.muatan)}</td><td className="r mono">{nf(d.borongan)}</td>
-                        <td className="r mono">{nf(d.bbm_liter)}</td><td className="r mono">{nf(d.price_per_liter)}</td><td className="r mono">{nf(d.bbm_rupiah)}</td>
-                        <td className="r mono">{nf(d.potongan_susut)}</td><td className="r mono">{nf(d.potongan_pm)}</td><td>{d.jenis_potongan || ''}</td>
-                        <td className="r mono">{nf(ujNet(d))}</td><td>{d.keterangan || ''}</td>
-                      </tr>
+                      <Fragment key={d.id}>
+                        <tr>
+                          <td>{i + 1}</td><td className="mono">{d.plate || '—'}</td><td>{d.driver_name || '—'}{d.is_retur ? ' (Retur)' : ''}</td>
+                          <td className="r mono">{nf(d.muatan)}</td><td className="r mono">{nf(d.borongan)}</td>
+                          <td className="r mono">{nf(d.bbm_liter)}</td><td className="r mono">{nf(d.price_per_liter)}</td><td className="r mono">{nf(d.bbm_rupiah)}</td>
+                          <td className="r mono">{nf(d.potongan_susut)}</td><td className="r mono">{nf(d.potongan_pm)}</td><td>{d.jenis_potongan || ''}</td>
+                          <td className="r mono">{nf(ujNet(d))}</td><td>{d.keterangan || ''}</td>
+                        </tr>
+                        {adjLines(d).map((a, k) => (
+                          <tr className="lb-adj" key={d.id + 'a' + k}>
+                            <td></td><td></td><td colSpan={9}>↳ {a.label}</td>
+                            <td className="r mono">{a.amt < 0 ? '−' : '+'} {nf(Math.abs(a.amt))}</td><td></td>
+                          </tr>
+                        ))}
+                      </Fragment>
                     ))}
-                  </>
+                  </Fragment>
                 ))}
                 <tr className="lb-total">
                   <td colSpan={3}>Total</td><td className="r mono">{nf(T.tonase)}</td><td className="r mono">{nf(T.borongan)}</td>
@@ -99,14 +116,14 @@ export default function FleetReports() {
                   <thead><tr><th>No</th><th>BK</th><th>Nama Supir</th><th className="r">Uang Tembak</th><th className="r">Potongan</th><th>Jenis</th><th className="r">Sisa</th></tr></thead>
                   <tbody>
                     {tbGroups.map(([r, list]) => (
-                      <>
-                        <tr className="lb-group" key={r}><td colSpan={7}>{r}</td></tr>
+                      <Fragment key={r}>
+                        <tr className="lb-group"><td colSpan={7}>{r}</td></tr>
                         {list.map((d, i) => (
                           <tr key={d.id}><td>{i + 1}</td><td className="mono">{d.plate || '—'}</td><td>{d.driver_name || '—'}</td>
                             <td className="r mono">{nf(d.tembak_amount)}</td><td className="r mono">{nf(d.tembak_potongan)}</td><td>{d.tembak_jenis_potongan || ''}</td>
                             <td className="r mono">{nf(tbNet(d))}</td></tr>
                         ))}
-                      </>
+                      </Fragment>
                     ))}
                     <tr className="lb-total"><td colSpan={6}>Total Uang Tembak</td><td className="r mono">{nf(totalTb)}</td></tr>
                   </tbody>

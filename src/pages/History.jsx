@@ -34,7 +34,7 @@ const CATS = [['all', 'All'], ['truck', 'By truck'], ['mechanic', 'By mechanic']
 function Archive() {
   const [cat, setCat] = useState('all')
   const [entityId, setEntityId] = useState('')
-  const [from, setFrom] = useState(daysAgo(90))
+  const [from, setFrom] = useState(daysAgo(1))
   const [to, setTo] = useState(today())
   const [rows, setRows] = useState([])
   const [mwos, setMwos] = useState([])          // mechanic's own work orders
@@ -240,7 +240,7 @@ function MechanicView({ mwos, loading, mView, setMView }) {
 
 /* ---------------- Logs: daily event feed ---------------- */
 function Logs() {
-  const [from, setFrom] = useState(daysAgo(7))
+  const [from, setFrom] = useState(daysAgo(1))
   const [to, setTo] = useState(today())
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)

@@ -312,9 +312,9 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
       </div>
       <div className="nsf-note">Total BBM: {rp(totalBbm)}</div>
 
-      <button type="button" className="nsf-toggle" onClick={() => setShowAdj(v => !v)}>{showAdj ? '▾' : '▸'} Penyesuaian</button>
+      <button type="button" className="btn ghost nsf-toggle" onClick={() => setShowAdj(v => !v)}>{showAdj ? '\u25be Sembunyikan' : '\u25b8 Tampilkan'} Penyesuaian — Selisih BBM, Potongan ANS/MNA, Cuci, Steam, Tol, Retur</button>
       {showAdj && (
-        <div className="nsf-grid" style={{ marginTop: 6 }}>
+        <div className="nsf-adj"><div className="nsf-grid">
           <label><span>Selisih BBM Liter</span><NumInput value={f.selisih_liter} onChange={v => set('selisih_liter', v)} onCommit={v => set('selisih_liter', v)} /></label>
           <label><span>Selisih BBM Price/L</span><NumInput value={f.selisih_price} onChange={v => set('selisih_price', v)} onCommit={v => set('selisih_price', v)} /></label>
           <label><span>Potongan ANS/MNA</span><NumInput value={f.potongan_pihak} onChange={v => set('potongan_pihak', v)} onCommit={v => set('potongan_pihak', v)} /></label>
@@ -323,7 +323,7 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
           <label><span>Double steam</span><NumInput value={f.tambahan_steam} onChange={v => set('tambahan_steam', v)} onCommit={v => set('tambahan_steam', v)} /></label>
           <label><span>Bantuan uang tol</span><NumInput value={f.tambahan_tol} onChange={v => set('tambahan_tol', v)} onCommit={v => set('tambahan_tol', v)} /></label>
           <label className="adj-retur" style={{ gridColumn: '1 / -1', marginTop: 0 }}><input type="checkbox" checked={f.is_retur} onChange={e => set('is_retur', e.target.checked)} /> Slip untuk retur</label>
-        </div>
+        </div></div>
       )}
 
       <label className="nsf-ket"><span>Keterangan</span><input value={f.keterangan} onChange={e => set('keterangan', e.target.value)} /></label>
