@@ -9,9 +9,9 @@ const num = v => (v === null || v === undefined || v === '') ? null : Number(v)
 const JENIS_POT = ['Susut', 'Ganti Ban', 'Ganti Spare Part', 'Lainnya']
 const rp = n => (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString('id-ID')
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
-const netOf = d => Number(d.borongan || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
+const netOf = d => Number(d.borongan || 0) - Number(d.selisih_bbm || 0) - Number(d.potongan_pihak || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
   + Number(d.tambahan_cuci || 0) + Number(d.tambahan_steam || 0) + Number(d.tambahan_tol || 0)
-const hasAdj = d => [d.tambahan_cuci, d.tambahan_steam, d.tambahan_tol].some(v => v) || d.is_retur
+const hasAdj = d => [d.selisih_bbm, d.potongan_pihak, d.tambahan_cuci, d.tambahan_steam, d.tambahan_tol].some(v => v) || d.is_retur
 const totalBbm = d => (Number(d.bbm_liter || 0) * Number(d.price_per_liter || 0))
 const isFilled = d => d.borongan != null
 const todayStr = () => new Date().toISOString().slice(0, 10)
@@ -208,26 +208,41 @@ function UnlockModal({ onOk, onCancel }) {
 
 function AdjustModal({ d, onSave, onClose }) {
   const [f, setF] = useState({
+    selisih_liter: d.selisih_bbm_liter ?? '', selisih_price: d.selisih_bbm_price ?? '',
+    potongan_pihak: d.potongan_pihak ?? '', potongan_pihak_nama: d.potongan_pihak_nama || '',
     tambahan_cuci: d.tambahan_cuci ?? '', tambahan_steam: d.tambahan_steam ?? '', tambahan_tol: d.tambahan_tol ?? '',
     is_retur: !!d.is_retur,
   })
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
   const nz = v => (v === '' || v === null || v === undefined) ? 0 : Number(v)
   const orNull = v => (v === '' || v === null || v === undefined) ? null : Number(v)
-  const preview = Number(d.borongan || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
+  const selisih = nz(f.selisih_liter) * nz(f.selisih_price)
+  const preview = Number(d.borongan || 0) - selisih - nz(f.potongan_pihak)
+    - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
     + nz(f.tambahan_cuci) + nz(f.tambahan_steam) + nz(f.tambahan_tol)
   function save() {
     onSave({
+      selisih_bbm_liter: orNull(f.selisih_liter), selisih_bbm_price: orNull(f.selisih_price), selisih_bbm: selisih || null,
+      potongan_pihak: orNull(f.potongan_pihak), potongan_pihak_nama: f.potongan_pihak_nama.trim() || null,
       tambahan_cuci: orNull(f.tambahan_cuci), tambahan_steam: orNull(f.tambahan_steam), tambahan_tol: orNull(f.tambahan_tol),
       is_retur: f.is_retur,
     })
   }
   return (
     <div className="slip-scrim">
-      <div className="rel-modal" style={{ width: 440 }}>
+      <div className="rel-modal nsf" style={{ width: 480 }}>
         <div className="slip-h" style={{ fontSize: 18 }}>Penyesuaian slip · {d.plate || '—'}</div>
+        <div className="fd-sec">Potongan (kurangi sisa)</div>
+        <div className="nsf-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+          <label><span>Selisih BBM Liter</span><NumInput value={f.selisih_liter} onChange={v => set('selisih_liter', v)} onCommit={v => set('selisih_liter', v)} /></label>
+          <label><span>Selisih BBM Price/L</span><NumInput value={f.selisih_price} onChange={v => set('selisih_price', v)} onCommit={v => set('selisih_price', v)} /></label>
+          <div className="nsf-f" style={{ justifyContent: 'flex-end' }}><span>= Selisih</span><div className="fd-calc">{rp(selisih)}</div></div>
+          <label><span>Potongan ANS/MNA</span><NumInput value={f.potongan_pihak} onChange={v => set('potongan_pihak', v)} onCommit={v => set('potongan_pihak', v)} /></label>
+          <label><span>Dari pihak</span><select value={f.potongan_pihak_nama} onChange={e => set('potongan_pihak_nama', e.target.value)}><option value="">—</option><option value="ANS">ANS</option><option value="MNA">MNA</option><option value="Lainnya">Lainnya</option></select></label>
+          <div></div>
+        </div>
         <div className="fd-sec">Tambahan (tambah sisa)</div>
-        <div className="adj-grid">
+        <div className="nsf-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
           <label><span>Cuci tangki</span><NumInput value={f.tambahan_cuci} onChange={v => set('tambahan_cuci', v)} onCommit={v => set('tambahan_cuci', v)} /></label>
           <label><span>Double steam</span><NumInput value={f.tambahan_steam} onChange={v => set('tambahan_steam', v)} onCommit={v => set('tambahan_steam', v)} /></label>
           <label><span>Bantuan uang tol</span><NumInput value={f.tambahan_tol} onChange={v => set('tambahan_tol', v)} onCommit={v => set('tambahan_tol', v)} /></label>
@@ -249,6 +264,7 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   const [f, setF] = useState({
     contract_id: '', truck_id: '', driver_name: '', tanggal: new Date().toISOString().slice(0, 10),
     borongan: '', bbm_liter: '', price_per_liter: '', potongan_susut: '', potongan_pm: '40000', jenis_potongan: '',
+    selisih_liter: '', selisih_price: '', potongan_pihak: '', potongan_pihak_nama: '',
     tambahan_cuci: '', tambahan_steam: '', tambahan_tol: '', is_retur: false, keterangan: '',
   })
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
@@ -258,7 +274,8 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   const orNull = v => (v === '' || v === null || v === undefined) ? null : Number(v)
   const truck = trucks.find(t => t.id === f.truck_id)
   const totalBbm = nz(f.bbm_liter) * nz(f.price_per_liter)
-  const sisa = nz(f.borongan) - totalBbm - nz(f.potongan_susut) - nz(f.potongan_pm)
+  const selisih = nz(f.selisih_liter) * nz(f.selisih_price)
+  const sisa = nz(f.borongan) - selisih - nz(f.potongan_pihak) - totalBbm - nz(f.potongan_susut) - nz(f.potongan_pm)
     + nz(f.tambahan_cuci) + nz(f.tambahan_steam) + nz(f.tambahan_tol)
 
   function submit() {
@@ -272,6 +289,8 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
       estimasi_muat: truck?.capacity_kg != null ? Number(truck.capacity_kg) : null,
       borongan: orNull(f.borongan), bbm_liter: orNull(f.bbm_liter), price_per_liter: orNull(f.price_per_liter), bbm_rupiah: totalBbm || null,
       potongan_susut: orNull(f.potongan_susut), potongan_pm: orNull(f.potongan_pm), jenis_potongan: f.jenis_potongan || null,
+      selisih_bbm_liter: orNull(f.selisih_liter), selisih_bbm_price: orNull(f.selisih_price), selisih_bbm: selisih || null,
+      potongan_pihak: orNull(f.potongan_pihak), potongan_pihak_nama: f.potongan_pihak_nama || null,
       tambahan_cuci: orNull(f.tambahan_cuci), tambahan_steam: orNull(f.tambahan_steam), tambahan_tol: orNull(f.tambahan_tol),
       is_retur: f.is_retur, keterangan: f.keterangan.trim() || null,
     })
@@ -296,6 +315,10 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
       <button type="button" className="nsf-toggle" onClick={() => setShowAdj(v => !v)}>{showAdj ? '▾' : '▸'} Penyesuaian</button>
       {showAdj && (
         <div className="nsf-grid" style={{ marginTop: 6 }}>
+          <label><span>Selisih BBM Liter</span><NumInput value={f.selisih_liter} onChange={v => set('selisih_liter', v)} onCommit={v => set('selisih_liter', v)} /></label>
+          <label><span>Selisih BBM Price/L</span><NumInput value={f.selisih_price} onChange={v => set('selisih_price', v)} onCommit={v => set('selisih_price', v)} /></label>
+          <label><span>Potongan ANS/MNA</span><NumInput value={f.potongan_pihak} onChange={v => set('potongan_pihak', v)} onCommit={v => set('potongan_pihak', v)} /></label>
+          <label><span>Dari pihak</span><select value={f.potongan_pihak_nama} onChange={e => set('potongan_pihak_nama', e.target.value)}><option value="">—</option><option value="ANS">ANS</option><option value="MNA">MNA</option><option value="Lainnya">Lainnya</option></select></label>
           <label><span>Cuci tangki</span><NumInput value={f.tambahan_cuci} onChange={v => set('tambahan_cuci', v)} onCommit={v => set('tambahan_cuci', v)} /></label>
           <label><span>Double steam</span><NumInput value={f.tambahan_steam} onChange={v => set('tambahan_steam', v)} onCommit={v => set('tambahan_steam', v)} /></label>
           <label><span>Bantuan uang tol</span><NumInput value={f.tambahan_tol} onChange={v => set('tambahan_tol', v)} onCommit={v => set('tambahan_tol', v)} /></label>
@@ -343,6 +366,8 @@ function SlipPrintH({ d, c, onClose }) {
           <table className="slip-hp-tbl" style={{ marginTop: 8 }}>
             <thead><tr><th colSpan={2}>PENYESUAIAN</th></tr></thead>
             <tbody>
+              {d.selisih_bbm ? <tr><td>Potongan Selisih BBM{d.selisih_bbm_liter ? ` (${fmtId(d.selisih_bbm_liter)} L × ${rp(d.selisih_bbm_price)})` : ''}</td><td className="r">− {rp(d.selisih_bbm)}</td></tr> : null}
+              {d.potongan_pihak ? <tr><td>Potongan {d.potongan_pihak_nama || 'pihak'}</td><td className="r">− {rp(d.potongan_pihak)}</td></tr> : null}
               {d.tambahan_cuci ? <tr><td>Tambahan Cuci Tangki</td><td className="r">+ {rp(d.tambahan_cuci)}</td></tr> : null}
               {d.tambahan_steam ? <tr><td>Tambahan Double Steam</td><td className="r">+ {rp(d.tambahan_steam)}</td></tr> : null}
               {d.tambahan_tol ? <tr><td>Tambahan Bantuan Uang Tol</td><td className="r">+ {rp(d.tambahan_tol)}</td></tr> : null}

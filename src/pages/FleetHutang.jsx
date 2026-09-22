@@ -17,21 +17,27 @@ export default function FleetHutang() {
   const { show, node } = useToast()
   const [dels, setDels] = useState([])
   const [claims, setClaims] = useState([])
+  const [drvStatus, setDrvStatus] = useState({})
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('ringkasan')
   const [openDriver, setOpenDriver] = useState(null)
-  const [adding, setAdding] = useState(null)   // {driver} for manual claim
+  const [adding, setAdding] = useState(null)
+  const [q, setQ] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
 
   async function load() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
-    const [dl, cl] = await Promise.all([
+    const [dl, cl, dr] = await Promise.all([
       supabase.from('fleet_deliveries')
         .select('id,tanggal,plate,driver_name,muatan,bongkar,potongan_susut,jenis_potongan,contract:fleet_contracts(control_no,origin,destination,susut_tolerance,price_per_kg)')
         .not('driver_name', 'is', null),
       supabase.from('fleet_driver_claims').select('*').order('tanggal', { ascending: false }),
+      supabase.from('drivers').select('name,status'),
     ])
-    setDels(dl.data || []); setClaims(cl.data || []); setLoading(false)
+    setDels(dl.data || []); setClaims(cl.data || [])
+    const m = {}; (dr.data || []).forEach(d => { m[d.name] = d.status }); setDrvStatus(m)
+    setLoading(false)
   }
   useEffect(() => { load() }, [])
 
@@ -62,6 +68,16 @@ export default function FleetHutang() {
     })).sort((x, y) => y.total - x.total || x.driver.localeCompare(y.driver))
   }, [dels, claims])
 
+  const filteredAccounts = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    return accounts.filter(a => {
+      if (statusFilter === 'active' && drvStatus[a.driver] !== 'Active') return false
+      if (statusFilter === 'inactive' && drvStatus[a.driver] === 'Active') return false
+      if (s && !a.driver.toLowerCase().includes(s)) return false
+      return true
+    })
+  }, [accounts, q, statusFilter, drvStatus])
+
   async function addClaim(driver, jenis, amount, tanggal, note) {
     const { error } = await supabase.from('fleet_driver_claims').insert({ driver_name: driver, jenis, amount: num(amount), tanggal: tanggal || null, note: note || null })
     if (error) return show(error.message, true)
@@ -81,13 +97,19 @@ export default function FleetHutang() {
         <div><h1>Hutang Supir</h1><div className="sub">Driver accounts — claims minus payments</div></div>
         <div className="seg-lens">{TABS.map(([v, l]) => <button key={v} className={tab === v ? 'on' : ''} onClick={() => { setTab(v); setOpenDriver(null) }}>{l}</button>)}</div>
       </div>
-      <div className="content" style={{ maxWidth: 980 }}>
+      <div className="content hutang-pg" style={{ maxWidth: 980 }}>
+        <div className="controls">
+          <div className="field grow"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search driver…" /></div>
+          <div className="seg-lens">
+            {[['all', 'All'], ['active', 'Active'], ['inactive', 'Inactive']].map(([v, l]) => (<button key={v} className={statusFilter === v ? 'on' : ''} onClick={() => setStatusFilter(v)}>{l}</button>))}
+          </div>
+        </div>
         {tab === 'ringkasan' ? (
-          accounts.length === 0 ? <Empty title="Nothing yet">Driver debts appear here.</Empty> : (
+          filteredAccounts.length === 0 ? <Empty title="Nothing yet">Driver debts appear here.</Empty> : (
             <div className="dk-wrap"><table className="dk-tbl ct-tbl">
               <thead><tr><th>Supir</th><th className="r">Susut</th><th className="r">Spare Part</th><th className="r">Ban</th><th className="r">Total Hutang</th></tr></thead>
               <tbody>
-                {accounts.map(a => (
+                {filteredAccounts.map(a => (
                   <tr key={a.driver}>
                     <td>{a.driver}</td>
                     <td className="r mono">{rp(a.susut)}</td><td className="r mono">{rp(a.sp)}</td><td className="r mono">{rp(a.ban)}</td>
@@ -98,7 +120,7 @@ export default function FleetHutang() {
             </table></div>
           )
         ) : (
-          <AccountView tab={tab} accounts={accounts} dels={dels} claims={claims} openDriver={openDriver} setOpenDriver={setOpenDriver}
+          <AccountView tab={tab} accounts={filteredAccounts} dels={dels} claims={claims} openDriver={openDriver} setOpenDriver={setOpenDriver}
             onAdd={(driver) => setAdding({ driver, jenis: JENIS_OF[tab] })} onDelClaim={delClaim} />
         )}
       </div>

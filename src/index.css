@@ -418,6 +418,9 @@ textarea { resize: vertical; min-height: 72px; }
 .adj-grid label span { font-size: 11px; color: var(--muted); }
 .adj-grid input, .adj-grid select { font-size: 13px; padding: 6px 8px; }
 .adj-retur { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; }
+.hutang-pg { font-size: 12px; }
+.hutang-pg .ct-tbl th, .hutang-pg .ct-tbl td { font-size: 11.5px; padding: 5px 8px; }
+.hutang-pg .crow .d { font-size: 13px; }
 
 /* compact new-slip form */
 .nsf { font-size: 12px; }

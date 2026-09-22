@@ -5,7 +5,7 @@ import { Spinner, Empty, useToast } from '../components/ui'
 const nf = n => (n === null || n === undefined || n === '' || Number(n) === 0) ? '' : Number(n).toLocaleString('id-ID')
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
 const fmtDay = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'long', year: 'numeric' }) : ''
-const ujNet = d => num(d.borongan) - num(d.bbm_rupiah) - num(d.potongan_susut) - num(d.potongan_pm) + num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol)
+const ujNet = d => num(d.borongan) - num(d.selisih_bbm) - num(d.potongan_pihak) - num(d.bbm_rupiah) - num(d.potongan_susut) - num(d.potongan_pm) + num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol)
 const tbNet = d => num(d.tembak_amount) - num(d.tembak_potongan)
 const rp = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 
