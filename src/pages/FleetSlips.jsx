@@ -9,7 +9,7 @@ const num = v => (v === null || v === undefined || v === '') ? null : Number(v)
 const JENIS_POT = ['Susut', 'Ganti Ban', 'Ganti Spare Part', 'Lainnya']
 const rp = n => (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString('id-ID')
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
-const potTotal = d => Number(d.potongan_susut || 0) + Number(d.potongan_ban || 0) + Number(d.potongan_sparepart || 0) + Number(d.potongan_lain || 0) + Number(d.potongan_pm || 0)
+const potTotal = d => Number(d.potongan_susut || 0) + Number(d.potongan_ban || 0) + Number(d.potongan_sparepart || 0) + Number(d.potongan_lain || 0) + Number(d.potongan_pm || 0) + Number(d.potongan_kasbon || 0) + Number(d.bbm_loan_liter || 0) * Number(d.price_per_liter || 0)
 const netOf = d => Number(d.borongan || 0) - Number(d.selisih_bbm || 0) - Number(d.potongan_pihak || 0) - Number(d.bbm_rupiah || 0) - potTotal(d)
   + Number(d.tambahan_cuci || 0) + Number(d.tambahan_steam || 0) + Number(d.tambahan_tol || 0)
 const hasAdj = d => [d.selisih_bbm, d.potongan_pihak, d.tambahan_cuci, d.tambahan_steam, d.tambahan_tol].some(v => v) || d.is_retur
@@ -19,7 +19,7 @@ const penyOf = d => tambahanOf(d) - Number(d.selisih_bbm || 0) - Number(d.potong
 const totalBbm = d => (Number(d.bbm_liter || 0) * Number(d.price_per_liter || 0))
 const isFilled = d => d.borongan != null
 const todayStr = () => new Date().toISOString().slice(0, 10)
-const NUMF = ['do_no', 'borongan', 'bbm_liter', 'price_per_liter', 'bbm_rupiah', 'potongan_susut', 'potongan_ban', 'potongan_sparepart', 'potongan_lain', 'potongan_pm']
+const NUMF = ['do_no', 'borongan', 'bbm_liter', 'price_per_liter', 'bbm_rupiah', 'potongan_susut', 'potongan_ban', 'potongan_sparepart', 'potongan_lain', 'potongan_pm', 'potongan_kasbon', 'bbm_loan_liter']
 
 export default function FleetSlips() {
   const { show, node } = useToast()
@@ -147,7 +147,7 @@ export default function FleetSlips() {
                   <tr>
                     <th>Tanggal</th><th>Plat</th><th>Supir</th><th>No. Kontrol</th><th>Asal</th><th>Tujuan</th>
                     <th className="r">Borongan</th><th className="r">BBM L</th><th className="r">Price/L</th><th className="r">Total BBM</th>
-                    <th className="r">Susut</th><th className="r">Ban</th><th className="r">S.Part</th><th className="r">Lain</th><th className="r">PM</th><th className="r">Penyesuaian</th>
+                    <th className="r">Susut</th><th className="r">Ban</th><th className="r">S.Part</th><th className="r">Lain</th><th className="r">PM</th><th className="r">Kasbon</th><th className="r">BBM Pinj (L)</th><th className="r">Penyesuaian</th>
                     <th className="r">Sisa</th><th>Keterangan</th><th></th>
                   </tr>
                 </thead>
@@ -171,6 +171,8 @@ export default function FleetSlips() {
                         <td><NumInput disabled={locked} value={d.potongan_sparepart} onChange={n => setCell(d.id, 'potongan_sparepart', n)} onCommit={n => saveField(d.id, 'potongan_sparepart', n)} /></td>
                         <td><NumInput disabled={locked} value={d.potongan_lain} onChange={n => setCell(d.id, 'potongan_lain', n)} onCommit={n => saveField(d.id, 'potongan_lain', n)} /></td>
                         <td><NumInput disabled={locked} value={d.potongan_pm} onChange={n => setCell(d.id, 'potongan_pm', n)} onCommit={n => saveField(d.id, 'potongan_pm', n)} /></td>
+                        <td><NumInput disabled={locked} value={d.potongan_kasbon} onChange={n => setCell(d.id, 'potongan_kasbon', n)} onCommit={n => saveField(d.id, 'potongan_kasbon', n)} /></td>
+                        <td><NumInput disabled={locked} value={d.bbm_loan_liter} onChange={n => setCell(d.id, 'bbm_loan_liter', n)} onCommit={n => saveField(d.id, 'bbm_loan_liter', n)} /></td>
                         <td className="mono ro r" title="Tambahan − Selisih BBM − ANS/MNA (set in Adj)">{penyOf(d) ? rp(penyOf(d)) : '—'}</td>
                         <td className="mono ro r" style={{ fontWeight: 700 }}>{isFilled(d) ? rp(netOf(d)) : '—'}</td>
                         <td><input disabled={locked} value={d.keterangan || ''} onChange={e => setCell(d.id, 'keterangan', e.target.value)} onBlur={e => saveField(d.id, 'keterangan', e.target.value)} /></td>
@@ -270,7 +272,7 @@ function AdjustModal({ d, onSave, onClose }) {
 function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   const [f, setF] = useState({
     contract_id: '', truck_id: '', driver_name: '', tanggal: new Date().toISOString().slice(0, 10),
-    borongan: '', bbm_liter: '', price_per_liter: '', potongan_susut: '', potongan_ban: '', potongan_sparepart: '', potongan_lain: '', potongan_pm: '40000',
+    borongan: '', bbm_liter: '', price_per_liter: '', potongan_susut: '', potongan_ban: '', potongan_sparepart: '', potongan_lain: '', potongan_pm: '40000', potongan_kasbon: '', bbm_loan_liter: '',
     selisih_liter: '', selisih_price: '', potongan_pihak: '', potongan_pihak_nama: '',
     tambahan_cuci: '', tambahan_steam: '', tambahan_tol: '', is_retur: false, keterangan: '',
   })
@@ -282,7 +284,7 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   const truck = trucks.find(t => t.id === f.truck_id)
   const totalBbm = nz(f.bbm_liter) * nz(f.price_per_liter)
   const selisih = nz(f.selisih_liter) * nz(f.selisih_price)
-  const potTot = nz(f.potongan_susut) + nz(f.potongan_ban) + nz(f.potongan_sparepart) + nz(f.potongan_lain) + nz(f.potongan_pm)
+  const potTot = nz(f.potongan_susut) + nz(f.potongan_ban) + nz(f.potongan_sparepart) + nz(f.potongan_lain) + nz(f.potongan_pm) + nz(f.potongan_kasbon) + nz(f.bbm_loan_liter) * nz(f.price_per_liter)
   const sisa = nz(f.borongan) - selisih - nz(f.potongan_pihak) - totalBbm - potTot
     + nz(f.tambahan_cuci) + nz(f.tambahan_steam) + nz(f.tambahan_tol)
 
@@ -296,6 +298,7 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
       estimasi_muat: truck?.capacity_kg != null ? Number(truck.capacity_kg) : null,
       borongan: orNull(f.borongan), bbm_liter: orNull(f.bbm_liter), price_per_liter: orNull(f.price_per_liter), bbm_rupiah: totalBbm || null,
       potongan_susut: orNull(f.potongan_susut), potongan_ban: orNull(f.potongan_ban), potongan_sparepart: orNull(f.potongan_sparepart), potongan_lain: orNull(f.potongan_lain), potongan_pm: orNull(f.potongan_pm),
+      potongan_kasbon: orNull(f.potongan_kasbon), bbm_loan_liter: orNull(f.bbm_loan_liter),
       selisih_bbm_liter: orNull(f.selisih_liter), selisih_bbm_price: orNull(f.selisih_price), selisih_bbm: selisih || null,
       potongan_pihak: orNull(f.potongan_pihak), potongan_pihak_nama: f.potongan_pihak_nama || null,
       tambahan_cuci: orNull(f.tambahan_cuci), tambahan_steam: orNull(f.tambahan_steam), tambahan_tol: orNull(f.tambahan_tol),
@@ -318,6 +321,8 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
         <label><span>Pot Spare Part</span><NumInput value={f.potongan_sparepart} onChange={v => set('potongan_sparepart', v)} onCommit={v => set('potongan_sparepart', v)} /></label>
         <label><span>Pot Lain</span><NumInput value={f.potongan_lain} onChange={v => set('potongan_lain', v)} onCommit={v => set('potongan_lain', v)} /></label>
         <label><span>PM *</span><NumInput value={f.potongan_pm} onChange={v => set('potongan_pm', v)} onCommit={v => set('potongan_pm', v)} /></label>
+        <label><span>Pot Kasbon</span><NumInput value={f.potongan_kasbon} onChange={v => set('potongan_kasbon', v)} onCommit={v => set('potongan_kasbon', v)} /></label>
+        <label><span>BBM Pinjaman (L)</span><NumInput value={f.bbm_loan_liter} onChange={v => set('bbm_loan_liter', v)} onCommit={v => set('bbm_loan_liter', v)} /></label>
       </div>
       <div className="nsf-note">Total BBM: {rp(totalBbm)}</div>
 
@@ -362,12 +367,12 @@ function SlipPrintH({ d, c, onClose }) {
         <table className="slip-hp-tbl">
           <thead><tr>
             <th>NO</th><th>NOMOR KONTROL</th><th>ASAL</th><th>TUJUAN</th><th>JUMLAH BORONGAN</th>
-            <th>BBM LITER</th><th>PRICE/L</th><th>TOTAL BBM</th><th>SUSUT</th><th>BAN</th><th>S.PART</th><th>LAIN</th><th>PM</th><th>SISA BORONGAN</th><th>KETERANGAN</th>
+            <th>BBM LITER</th><th>PRICE/L</th><th>TOTAL BBM</th><th>SUSUT</th><th>BAN</th><th>S.PART</th><th>LAIN</th><th>PM</th><th>KASBON</th><th>BBM PINJ</th><th>SISA BORONGAN</th><th>KETERANGAN</th>
           </tr></thead>
           <tbody><tr>
             <td>{d.do_no}</td><td>{c.control_no || '—'}</td><td>{c.origin || '—'}</td><td>{c.destination || '—'}</td>
             <td className="r">{rp(d.borongan)}</td><td className="r">{d.bbm_liter || ''}</td><td className="r">{rp(d.price_per_liter)}</td><td className="r">{rp(totalBbm(d))}</td>
-            <td className="r">{rp(d.potongan_susut)}</td><td className="r">{rp(d.potongan_ban)}</td><td className="r">{rp(d.potongan_sparepart)}</td><td className="r">{rp(d.potongan_lain)}</td><td className="r">{rp(d.potongan_pm)}</td>
+            <td className="r">{rp(d.potongan_susut)}</td><td className="r">{rp(d.potongan_ban)}</td><td className="r">{rp(d.potongan_sparepart)}</td><td className="r">{rp(d.potongan_lain)}</td><td className="r">{rp(d.potongan_pm)}</td><td className="r">{rp(d.potongan_kasbon)}</td><td className="r">{d.bbm_loan_liter ? `${fmtId(d.bbm_loan_liter)}L` : ''}</td>
             <td className="r" style={{ fontWeight: 800 }}>{rp(netOf(d))}</td><td>{d.keterangan || ''}</td>
           </tr></tbody>
         </table>
