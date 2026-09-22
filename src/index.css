@@ -422,6 +422,8 @@ textarea { resize: vertical; min-height: 72px; }
 .hutang-pg { font-size: 12px; }
 .hutang-pg .ct-tbl th, .hutang-pg .ct-tbl td { font-size: 11.5px; padding: 5px 8px; }
 .hutang-pg .crow .d { font-size: 13px; }
+.clickrow { cursor: pointer; }
+.clickrow:hover { background: var(--accent-wash); }
 
 /* compact new-slip form */
 .nsf { font-size: 12px; }

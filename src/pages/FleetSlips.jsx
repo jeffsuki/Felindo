@@ -9,7 +9,8 @@ const num = v => (v === null || v === undefined || v === '') ? null : Number(v)
 const JENIS_POT = ['Susut', 'Ganti Ban', 'Ganti Spare Part', 'Lainnya']
 const rp = n => (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString('id-ID')
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
-const netOf = d => Number(d.borongan || 0) - Number(d.selisih_bbm || 0) - Number(d.potongan_pihak || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
+const potTotal = d => Number(d.potongan_susut || 0) + Number(d.potongan_ban || 0) + Number(d.potongan_sparepart || 0) + Number(d.potongan_lain || 0) + Number(d.potongan_pm || 0)
+const netOf = d => Number(d.borongan || 0) - Number(d.selisih_bbm || 0) - Number(d.potongan_pihak || 0) - Number(d.bbm_rupiah || 0) - potTotal(d)
   + Number(d.tambahan_cuci || 0) + Number(d.tambahan_steam || 0) + Number(d.tambahan_tol || 0)
 const hasAdj = d => [d.selisih_bbm, d.potongan_pihak, d.tambahan_cuci, d.tambahan_steam, d.tambahan_tol].some(v => v) || d.is_retur
 const tambahanOf = d => Number(d.tambahan_cuci || 0) + Number(d.tambahan_steam || 0) + Number(d.tambahan_tol || 0)
@@ -17,7 +18,7 @@ const potLainOf = d => Number(d.selisih_bbm || 0) + Number(d.potongan_pihak || 0
 const totalBbm = d => (Number(d.bbm_liter || 0) * Number(d.price_per_liter || 0))
 const isFilled = d => d.borongan != null
 const todayStr = () => new Date().toISOString().slice(0, 10)
-const NUMF = ['do_no', 'borongan', 'bbm_liter', 'price_per_liter', 'bbm_rupiah', 'potongan_susut', 'potongan_pm']
+const NUMF = ['do_no', 'borongan', 'bbm_liter', 'price_per_liter', 'bbm_rupiah', 'potongan_susut', 'potongan_ban', 'potongan_sparepart', 'potongan_lain', 'potongan_pm']
 
 export default function FleetSlips() {
   const { show, node } = useToast()
@@ -145,7 +146,7 @@ export default function FleetSlips() {
                   <tr>
                     <th>Tanggal</th><th>Plat</th><th>Supir</th><th>No. Kontrol</th><th>Asal</th><th>Tujuan</th>
                     <th className="r">Borongan</th><th className="r">BBM L</th><th className="r">Price/L</th><th className="r">Total BBM</th>
-                    <th className="r">Potongan</th><th className="r">PM</th><th>Jenis Potongan</th><th className="r">Pot. Lain</th><th className="r">Tambahan</th>
+                    <th className="r">Susut</th><th className="r">Ban</th><th className="r">S.Part</th><th className="r">Lain</th><th className="r">PM</th><th className="r">Pot. Lain*</th><th className="r">Tambahan</th>
                     <th className="r">Sisa</th><th>Keterangan</th><th></th>
                   </tr>
                 </thead>
@@ -165,8 +166,10 @@ export default function FleetSlips() {
                         <td><NumInput disabled={locked} value={d.price_per_liter} onChange={n => setCell(d.id, 'price_per_liter', n)} onCommit={n => saveBbm(d.id, 'price_per_liter', n)} /></td>
                         <td className="mono ro r">{totalBbm(d) ? fmtId(totalBbm(d)) : '—'}</td>
                         <td><NumInput disabled={locked} value={d.potongan_susut} onChange={n => setCell(d.id, 'potongan_susut', n)} onCommit={n => saveField(d.id, 'potongan_susut', n)} /></td>
+                        <td><NumInput disabled={locked} value={d.potongan_ban} onChange={n => setCell(d.id, 'potongan_ban', n)} onCommit={n => saveField(d.id, 'potongan_ban', n)} /></td>
+                        <td><NumInput disabled={locked} value={d.potongan_sparepart} onChange={n => setCell(d.id, 'potongan_sparepart', n)} onCommit={n => saveField(d.id, 'potongan_sparepart', n)} /></td>
+                        <td><NumInput disabled={locked} value={d.potongan_lain} onChange={n => setCell(d.id, 'potongan_lain', n)} onCommit={n => saveField(d.id, 'potongan_lain', n)} /></td>
                         <td><NumInput disabled={locked} value={d.potongan_pm} onChange={n => setCell(d.id, 'potongan_pm', n)} onCommit={n => saveField(d.id, 'potongan_pm', n)} /></td>
-                        <td><select disabled={locked} value={d.jenis_potongan || ''} onChange={e => { setCell(d.id, 'jenis_potongan', e.target.value); saveField(d.id, 'jenis_potongan', e.target.value) }}><option value="">—</option>{JENIS_POT.map(j => <option key={j} value={j}>{j}</option>)}</select></td>
                         <td className="mono ro r" title="Selisih BBM + Potongan ANS/MNA (set in Adj)">{potLainOf(d) ? rp(potLainOf(d)) : '—'}</td>
                         <td className="mono ro r">{tambahanOf(d) ? rp(tambahanOf(d)) : '—'}</td>
                         <td className="mono ro r" style={{ fontWeight: 700 }}>{isFilled(d) ? rp(netOf(d)) : '—'}</td>
@@ -267,7 +270,7 @@ function AdjustModal({ d, onSave, onClose }) {
 function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   const [f, setF] = useState({
     contract_id: '', truck_id: '', driver_name: '', tanggal: new Date().toISOString().slice(0, 10),
-    borongan: '', bbm_liter: '', price_per_liter: '', potongan_susut: '', potongan_pm: '40000', jenis_potongan: '',
+    borongan: '', bbm_liter: '', price_per_liter: '', potongan_susut: '', potongan_ban: '', potongan_sparepart: '', potongan_lain: '', potongan_pm: '40000',
     selisih_liter: '', selisih_price: '', potongan_pihak: '', potongan_pihak_nama: '',
     tambahan_cuci: '', tambahan_steam: '', tambahan_tol: '', is_retur: false, keterangan: '',
   })
@@ -279,20 +282,20 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   const truck = trucks.find(t => t.id === f.truck_id)
   const totalBbm = nz(f.bbm_liter) * nz(f.price_per_liter)
   const selisih = nz(f.selisih_liter) * nz(f.selisih_price)
-  const sisa = nz(f.borongan) - selisih - nz(f.potongan_pihak) - totalBbm - nz(f.potongan_susut) - nz(f.potongan_pm)
+  const potTot = nz(f.potongan_susut) + nz(f.potongan_ban) + nz(f.potongan_sparepart) + nz(f.potongan_lain) + nz(f.potongan_pm)
+  const sisa = nz(f.borongan) - selisih - nz(f.potongan_pihak) - totalBbm - potTot
     + nz(f.tambahan_cuci) + nz(f.tambahan_steam) + nz(f.tambahan_tol)
 
   function submit() {
     if (!f.contract_id) return setErr('Pick a contract.')
     if (nz(f.borongan) <= 0) return setErr('Borongan is required.')
     if (f.potongan_pm === '' || f.potongan_pm === null) return setErr('PM is required.')
-    if (nz(f.potongan_susut) > 0 && !f.jenis_potongan) return setErr('Pick a Jenis Potongan for the potongan.')
     onCreate({
       contract_id: f.contract_id, truck_id: f.truck_id || null, plate: truck?.plate || null,
       driver_name: f.driver_name || null, tanggal: f.tanggal || null,
       estimasi_muat: truck?.capacity_kg != null ? Number(truck.capacity_kg) : null,
       borongan: orNull(f.borongan), bbm_liter: orNull(f.bbm_liter), price_per_liter: orNull(f.price_per_liter), bbm_rupiah: totalBbm || null,
-      potongan_susut: orNull(f.potongan_susut), potongan_pm: orNull(f.potongan_pm), jenis_potongan: f.jenis_potongan || null,
+      potongan_susut: orNull(f.potongan_susut), potongan_ban: orNull(f.potongan_ban), potongan_sparepart: orNull(f.potongan_sparepart), potongan_lain: orNull(f.potongan_lain), potongan_pm: orNull(f.potongan_pm),
       selisih_bbm_liter: orNull(f.selisih_liter), selisih_bbm_price: orNull(f.selisih_price), selisih_bbm: selisih || null,
       potongan_pihak: orNull(f.potongan_pihak), potongan_pihak_nama: f.potongan_pihak_nama || null,
       tambahan_cuci: orNull(f.tambahan_cuci), tambahan_steam: orNull(f.tambahan_steam), tambahan_tol: orNull(f.tambahan_tol),
@@ -308,10 +311,12 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
         <div className="nsf-f"><span>Truck</span><SearchSelect value={f.truck_id} onChange={v => set('truck_id', v)} placeholder="Pick…" options={trucks.map(t => ({ value: t.id, label: t.plate }))} /></div>
         <div className="nsf-f"><span>Driver</span><SearchSelect value={f.driver_name} onChange={v => set('driver_name', v)} placeholder="Pick…" options={drivers.map(d => ({ value: d.name, label: d.nickname ? `${d.name} (${d.nickname})` : d.name }))} /></div>
         <label><span>Borongan *</span><NumInput value={f.borongan} onChange={v => set('borongan', v)} onCommit={v => set('borongan', v)} /></label>
-        <label><span>Jenis Potongan</span><select value={f.jenis_potongan} onChange={e => set('jenis_potongan', e.target.value)}><option value="">—</option>{JENIS_POT.map(j => <option key={j} value={j}>{j}</option>)}</select></label>
         <label><span>BBM Liter</span><NumInput value={f.bbm_liter} onChange={v => set('bbm_liter', v)} onCommit={v => set('bbm_liter', v)} /></label>
         <label><span>BBM Price/L</span><NumInput value={f.price_per_liter} onChange={v => set('price_per_liter', v)} onCommit={v => set('price_per_liter', v)} /></label>
-        <label><span>Potongan</span><NumInput value={f.potongan_susut} onChange={v => set('potongan_susut', v)} onCommit={v => set('potongan_susut', v)} /></label>
+        <label><span>Pot Susut</span><NumInput value={f.potongan_susut} onChange={v => set('potongan_susut', v)} onCommit={v => set('potongan_susut', v)} /></label>
+        <label><span>Pot Ban</span><NumInput value={f.potongan_ban} onChange={v => set('potongan_ban', v)} onCommit={v => set('potongan_ban', v)} /></label>
+        <label><span>Pot Spare Part</span><NumInput value={f.potongan_sparepart} onChange={v => set('potongan_sparepart', v)} onCommit={v => set('potongan_sparepart', v)} /></label>
+        <label><span>Pot Lain</span><NumInput value={f.potongan_lain} onChange={v => set('potongan_lain', v)} onCommit={v => set('potongan_lain', v)} /></label>
         <label><span>PM *</span><NumInput value={f.potongan_pm} onChange={v => set('potongan_pm', v)} onCommit={v => set('potongan_pm', v)} /></label>
       </div>
       <div className="nsf-note">Total BBM: {rp(totalBbm)}</div>
@@ -357,12 +362,12 @@ function SlipPrintH({ d, c, onClose }) {
         <table className="slip-hp-tbl">
           <thead><tr>
             <th>NO</th><th>NOMOR KONTROL</th><th>ASAL</th><th>TUJUAN</th><th>JUMLAH BORONGAN</th>
-            <th>BBM LITER</th><th>PRICE/L</th><th>TOTAL BBM</th><th>POTONGAN</th><th>PM</th><th>SISA BORONGAN</th><th>KETERANGAN</th>
+            <th>BBM LITER</th><th>PRICE/L</th><th>TOTAL BBM</th><th>SUSUT</th><th>BAN</th><th>S.PART</th><th>LAIN</th><th>PM</th><th>SISA BORONGAN</th><th>KETERANGAN</th>
           </tr></thead>
           <tbody><tr>
             <td>{d.do_no}</td><td>{c.control_no || '—'}</td><td>{c.origin || '—'}</td><td>{c.destination || '—'}</td>
             <td className="r">{rp(d.borongan)}</td><td className="r">{d.bbm_liter || ''}</td><td className="r">{rp(d.price_per_liter)}</td><td className="r">{rp(totalBbm(d))}</td>
-            <td className="r">{rp(d.potongan_susut)}</td><td className="r">{rp(d.potongan_pm)}</td>
+            <td className="r">{rp(d.potongan_susut)}</td><td className="r">{rp(d.potongan_ban)}</td><td className="r">{rp(d.potongan_sparepart)}</td><td className="r">{rp(d.potongan_lain)}</td><td className="r">{rp(d.potongan_pm)}</td>
             <td className="r" style={{ fontWeight: 800 }}>{rp(netOf(d))}</td><td>{d.keterangan || ''}</td>
           </tr></tbody>
         </table>
