@@ -31,10 +31,10 @@ export default function FleetHutang() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
     const [dl, cl, dr, ln, rp2] = await Promise.all([
-      supabase.from('fleet_deliveries').select('driver_name,muatan,bongkar,potongan_susut,potongan_ban,potongan_sparepart,potongan_kasbon,bbm_loan_liter,contract:fleet_contracts(susut_tolerance,price_per_kg)').not('driver_name', 'is', null),
+      supabase.from('fleet_deliveries').select('driver_name,tanggal,muatan,bongkar,bbm_liter,potongan_susut,potongan_ban,potongan_sparepart,potongan_kasbon,contract:fleet_contracts(susut_tolerance,price_per_kg)').not('driver_name', 'is', null),
       supabase.from('fleet_driver_claims').select('driver_name,jenis,amount'),
       supabase.from('drivers').select('name,nickname,status'),
-      supabase.from('fleet_driver_loans').select('driver_name,jenis,amount,liter'),
+      supabase.from('fleet_driver_loans').select('driver_name,jenis,amount,liter,tanggal'),
       supabase.from('fleet_driver_loan_repayments').select('driver_name,amount'),
     ])
     setDels(dl.data || []); setClaims(cl.data || []); setLoans(ln.data || []); setRepays(rp2.data || [])
@@ -46,20 +46,27 @@ export default function FleetHutang() {
 
   const accounts = useMemo(() => {
     const m = {}
-    const ensure = n => (m[n] = m[n] || { driver: n, susutC: 0, susutP: 0, banC: 0, banP: 0, spC: 0, spP: 0, kasbonC: 0, kasbonP: 0, bbmC: 0, bbmP: 0 })
+    const ensure = n => (m[n] = m[n] || { driver: n, susutC: 0, susutP: 0, banC: 0, banP: 0, spC: 0, spP: 0, kasbonC: 0, kasbonP: 0, bbmEv: [] })
     for (const d of dels) {
       if (!d.driver_name) continue
       const a = ensure(d.driver_name); a.susutC += claimRp(d)
       a.susutP += num(d.potongan_susut); a.banP += num(d.potongan_ban); a.spP += num(d.potongan_sparepart)
-      a.kasbonP += num(d.potongan_kasbon); a.bbmP += num(d.bbm_loan_liter)
+      a.kasbonP += num(d.potongan_kasbon)
+      if (num(d.bbm_liter) > 0) a.bbmEv.push([d.tanggal || '', -num(d.bbm_liter)])
     }
     for (const c of claims) { const a = ensure(c.driver_name); if (c.jenis === 'Ganti Ban') a.banC += num(c.amount); else if (c.jenis === 'Ganti Spare Part') a.spC += num(c.amount) }
-    for (const l of loans) { const a = ensure(l.driver_name); if (l.jenis === 'Cash') a.kasbonC += num(l.amount); else if (l.jenis === 'BBM') a.bbmC += num(l.liter) }
+    for (const l of loans) { const a = ensure(l.driver_name); if (l.jenis === 'Cash') a.kasbonC += num(l.amount); else if (l.jenis === 'BBM') a.bbmEv.push([l.tanggal || '', num(l.liter)]) }
     for (const r of repays) { const a = ensure(r.driver_name); a.kasbonP += num(r.amount) }
-    return Object.values(m).map(a => ({
-      ...a, susut: a.susutC - a.susutP, ban: a.banC - a.banP, sp: a.spC - a.spP, kasbon: a.kasbonC - a.kasbonP, bbm: a.bbmC - a.bbmP,
-      total: (a.susutC - a.susutP) + (a.banC - a.banP) + (a.spC - a.spP) + (a.kasbonC - a.kasbonP),
-    })).sort((x, y) => y.total - x.total || x.driver.localeCompare(y.driver))
+    return Object.values(m).map(a => {
+      const bbmC = a.bbmEv.filter(e => e[1] > 0).reduce((s, e) => s + e[1], 0)
+      const ev = [...a.bbmEv].sort((x, y) => x[0].localeCompare(y[0]))
+      let bal = 0; for (const [, amt] of ev) { bal += amt; if (bal < 0) bal = 0 }
+      return {
+        ...a, susut: a.susutC - a.susutP, ban: a.banC - a.banP, sp: a.spC - a.spP, kasbon: a.kasbonC - a.kasbonP,
+        bbmC, bbmP: bbmC - bal, bbm: bal,
+        total: (a.susutC - a.susutP) + (a.banC - a.banP) + (a.spC - a.spP) + (a.kasbonC - a.kasbonP),
+      }
+    }).sort((x, y) => y.total - x.total || x.driver.localeCompare(y.driver))
   }, [dels, claims, loans, repays])
 
   const filtered = useMemo(() => {

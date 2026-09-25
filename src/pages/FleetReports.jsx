@@ -5,8 +5,8 @@ import { Spinner, Empty, useToast } from '../components/ui'
 const nf = n => (n === null || n === undefined || n === '' || Number(n) === 0) ? '' : Number(n).toLocaleString('id-ID')
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
 const fmtDay = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'long', year: 'numeric' }) : ''
-const ujNet = d => num(d.borongan) - num(d.selisih_bbm) - num(d.potongan_pihak) - num(d.bbm_rupiah) - (num(d.potongan_susut) + num(d.potongan_ban) + num(d.potongan_sparepart) + num(d.potongan_lain) + num(d.potongan_pm) + num(d.potongan_kasbon) + num(d.bbm_loan_liter) * num(d.price_per_liter)) + num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol)
-const potOf = d => num(d.potongan_susut) + num(d.potongan_ban) + num(d.potongan_sparepart) + num(d.potongan_pm) + num(d.potongan_kasbon) + num(d.bbm_loan_liter) * num(d.price_per_liter)
+const ujNet = d => num(d.borongan) - num(d.selisih_bbm) - num(d.potongan_pihak) - num(d.bbm_rupiah) - (num(d.potongan_susut) + num(d.potongan_ban) + num(d.potongan_sparepart) + num(d.potongan_lain) + num(d.potongan_pm) + num(d.potongan_kasbon)) + num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol)
+const potOf = d => num(d.potongan_susut) + num(d.potongan_ban) + num(d.potongan_sparepart) + num(d.potongan_pm) + num(d.potongan_kasbon)
 const lainOf = d => num(d.potongan_lain)
 const penyOf = d => num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol) - num(d.selisih_bbm) - num(d.potongan_pihak)
 const tonaseOf = d => num(d.estimasi_muat) || num(d.muatan)
@@ -17,7 +17,6 @@ const detailLines = d => {
   if (num(d.potongan_sparepart)) out.push(['Pot Spare Part', -num(d.potongan_sparepart), 'pot'])
   if (num(d.potongan_pm)) out.push(['PM', -num(d.potongan_pm), 'pot'])
   if (num(d.potongan_kasbon)) out.push(['Pot Kasbon', -num(d.potongan_kasbon), 'pot'])
-  if (num(d.bbm_loan_liter)) out.push([`BBM Pinjaman (${nf(d.bbm_loan_liter)}L × ${nf(d.price_per_liter)})`, -num(d.bbm_loan_liter) * num(d.price_per_liter), 'pot'])
   if (num(d.potongan_lain)) out.push(['Pot Lain', -num(d.potongan_lain), 'lain'])
   if (num(d.selisih_bbm)) out.push([`Selisih BBM${d.selisih_bbm_liter ? ` (${nf(d.selisih_bbm_liter)}L × ${nf(d.selisih_bbm_price)})` : ''}`, -num(d.selisih_bbm), 'peny'])
   if (num(d.potongan_pihak)) out.push([`Potongan ${d.potongan_pihak_nama || 'pihak'}`, -num(d.potongan_pihak), 'peny'])
@@ -56,7 +55,7 @@ export default function FleetReports() {
   useEffect(() => {
     if (!isConfigured) return
     setLoading(true)
-    const sel = 'id,plate,driver_name,muatan,estimasi_muat,borongan,bbm_liter,price_per_liter,bbm_rupiah,potongan_susut,potongan_ban,potongan_sparepart,potongan_pm,potongan_lain,potongan_kasbon,bbm_loan_liter,jenis_potongan,selisih_bbm,selisih_bbm_liter,selisih_bbm_price,potongan_pihak,potongan_pihak_nama,tambahan_cuci,tambahan_steam,tambahan_tol,is_retur,keterangan,tembak_amount,tembak_potongan,tembak_jenis_potongan,contract:fleet_contracts(control_no,origin,destination)'
+    const sel = 'id,plate,driver_name,muatan,estimasi_muat,borongan,bbm_liter,price_per_liter,bbm_rupiah,potongan_susut,potongan_ban,potongan_sparepart,potongan_pm,potongan_lain,potongan_kasbon,jenis_potongan,selisih_bbm,selisih_bbm_liter,selisih_bbm_price,potongan_pihak,potongan_pihak_nama,tambahan_cuci,tambahan_steam,tambahan_tol,is_retur,keterangan,tembak_amount,tembak_potongan,tembak_jenis_potongan,contract:fleet_contracts(control_no,origin,destination)'
     Promise.all([
       supabase.from('fleet_deliveries').select(sel).eq('tanggal', date).not('borongan', 'is', null),
       supabase.from('fleet_deliveries').select(sel).eq('tembak_released_date', date),

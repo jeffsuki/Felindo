@@ -29,7 +29,7 @@ export default function FleetHutangDriver() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
     const [dl, cl, ln, rpm] = await Promise.all([
-      supabase.from('fleet_deliveries').select('id,tanggal,plate,muatan,bongkar,potongan_susut,potongan_ban,potongan_sparepart,potongan_kasbon,bbm_loan_liter,price_per_liter,contract:fleet_contracts(origin,destination,susut_tolerance,price_per_kg)').eq('driver_name', driver),
+      supabase.from('fleet_deliveries').select('id,tanggal,plate,muatan,bongkar,potongan_susut,potongan_ban,potongan_sparepart,potongan_kasbon,bbm_liter,price_per_liter,contract:fleet_contracts(origin,destination,susut_tolerance,price_per_kg)').eq('driver_name', driver),
       supabase.from('fleet_driver_claims').select('*').eq('driver_name', driver).order('tanggal', { ascending: false }),
       supabase.from('fleet_driver_loans').select('*').eq('driver_name', driver).order('tanggal', { ascending: false }),
       supabase.from('fleet_driver_loan_repayments').select('*').eq('driver_name', driver).order('tanggal', { ascending: false }),
@@ -42,12 +42,18 @@ export default function FleetHutangDriver() {
     const a = { susutC: 0, susutP: 0, banC: 0, banP: 0, spC: 0, spP: 0, kasbonC: 0, kasbonP: 0, bbmC: 0, bbmP: 0 }
     for (const d of dels) {
       a.susutC += claimRp(d); a.susutP += num(d.potongan_susut); a.banP += num(d.potongan_ban); a.spP += num(d.potongan_sparepart)
-      a.kasbonP += num(d.potongan_kasbon); a.bbmP += num(d.bbm_loan_liter)
+      a.kasbonP += num(d.potongan_kasbon)
     }
     for (const c of claims) { if (c.jenis === 'Ganti Ban') a.banC += num(c.amount); else if (c.jenis === 'Ganti Spare Part') a.spC += num(c.amount) }
     for (const l of loans) { if (l.jenis === 'Cash') a.kasbonC += num(l.amount); else if (l.jenis === 'BBM') a.bbmC += num(l.liter) }
     for (const r of repays) a.kasbonP += num(r.amount)
-    a.susut = a.susutC - a.susutP; a.ban = a.banC - a.banP; a.sp = a.spC - a.spP; a.kasbon = a.kasbonC - a.kasbonP; a.bbm = a.bbmC - a.bbmP
+    // date-aware BBM outstanding: chronological running balance, floored at 0
+    const ev = []
+    loans.forEach(l => { if (l.jenis === 'BBM') ev.push([l.tanggal || '', num(l.liter)]) })
+    dels.forEach(d => { if (num(d.bbm_liter) > 0) ev.push([d.tanggal || '', -num(d.bbm_liter)]) })
+    ev.sort((x, y) => x[0].localeCompare(y[0]))
+    let bbal = 0; for (const [, amt] of ev) { bbal += amt; if (bbal < 0) bbal = 0 }
+    a.susut = a.susutC - a.susutP; a.ban = a.banC - a.banP; a.sp = a.spC - a.spP; a.kasbon = a.kasbonC - a.kasbonP; a.bbm = bbal
     a.total = a.susut + a.ban + a.sp + a.kasbon
     return a
   }, [dels, claims, loans, repays])
@@ -135,10 +141,10 @@ export default function FleetHutangDriver() {
               <tbody>{bbmLoans.map(l => <tr key={l.id}><td>{fmtDate(l.tanggal)}</td><td>{l.note || '—'}</td><td className="r mono">{L(l.liter)}</td><td><button className="btn ghost sm void-btn" onClick={() => { if (confirm('Delete BBM loan?')) delRow('fleet_driver_loans', l.id) }}>✕</button></td></tr>)}</tbody></table>
           )}
           <button className="btn ghost sm" style={{ marginTop: 8 }} onClick={() => setLoanAdd({ jenis: 'BBM' })}>+ Add BBM loan</button>
-          <div className="fd-sec" style={{ marginTop: 12 }}>Dibayar via slip (liter)</div>
-          {pay('bbm_loan_liter').length === 0 ? <div className="pool-hint">No repayments.</div> : (
+          <div className="fd-sec" style={{ marginTop: 12 }}>BBM digunakan (menyicil, liter)</div>
+          {pay('bbm_liter').length === 0 ? <div className="pool-hint">No BBM usage.</div> : (
             <table className="dk-tbl ct-tbl"><thead><tr><th>Date</th><th>Plate</th><th className="r">Liter</th><th className="r">@ Price/L</th></tr></thead>
-              <tbody>{pay('bbm_loan_liter').map(d => <tr key={d.id}><td>{fmtDate(d.tanggal)}</td><td className="mono">{d.plate || '—'}</td><td className="r mono">{L(d.bbm_loan_liter)}</td><td className="r mono">{rp(d.price_per_liter)}</td></tr>)}</tbody></table>
+              <tbody>{pay('bbm_liter').map(d => <tr key={d.id}><td>{fmtDate(d.tanggal)}</td><td className="mono">{d.plate || '—'}</td><td className="r mono">{L(d.bbm_liter)}</td><td className="r mono">{rp(d.price_per_liter)}</td></tr>)}</tbody></table>
           )}
         </Section>
       </div>
