@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Spinner, Empty, useToast } from '../components/ui'
+import { groupTrips, tripRoute } from '../lib/trips'
 
 const WITH_DO = ['Muat', 'Gantung/Rusak di jalan', 'Bongkar']
 const NO_DO = ['Kosong', 'Rusak', 'Gantung']
@@ -22,11 +23,13 @@ export default function FleetHome() {
     setLoading(true)
     const [tr, dl] = await Promise.all([
       supabase.from('trucks').select('id,plate,stage,fleet_division,status').eq('status', 'Active').order('plate'),
-      supabase.from('fleet_deliveries').select('plate,driver_name,tanggal,contract:fleet_contracts(origin,destination)')
+      supabase.from('fleet_deliveries').select('id,parent_id,plate,driver_name,tanggal,contract:fleet_contracts(origin,destination)')
         .not('driver_name', 'is', null).is('tanggal_bongkar', null),
     ])
     setTrucks(tr.data || [])
-    const m = {}; (dl.data || []).forEach(d => { if (d.plate && !m[d.plate]) m[d.plate] = { driver: d.driver_name, tanggal: d.tanggal, route: `${d.contract?.origin || '—'} → ${d.contract?.destination || '—'}` } })
+    // Open trips per plate (a two-contract load counts once, with both routes); latest slip date wins.
+    const trips = groupTrips(dl.data || []).sort((a, b) => (b.tanggal || '').localeCompare(a.tanggal || ''))
+    const m = {}; trips.forEach(d => { if (d.plate && !m[d.plate]) m[d.plate] = { driver: d.driver_name, tanggal: d.tanggal, route: tripRoute(d) } })
     setByPlate(m); setLoading(false)
   }
   useEffect(() => { load() }, [])

@@ -1,9 +1,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase, isConfigured } from '../supabaseClient'
+import { supabase, isConfigured, fetchAll } from '../supabaseClient'
 import { Spinner, Empty, useToast } from '../components/ui'
-
-const isReady = d => d.muatan != null && d.bongkar != null
+import { groupTrips, tripReady } from '../lib/trips'
 
 // Main tab: drivers with uang tembak activity. Each opens its own page.
 export default function FleetTembak() {
@@ -15,9 +14,10 @@ export default function FleetTembak() {
 
   useEffect(() => {
     if (!isConfigured) { setLoading(false); return }
-    supabase.from('fleet_deliveries').select('driver_name,muatan,bongkar,tembak_released')
-      .not('driver_name', 'is', null)
-      .then(({ data }) => { setRows(data || []); setLoading(false) })
+    // One uang tembak per trip: contract parts (parent_id) fold into their slip.
+    fetchAll(() => supabase.from('fleet_deliveries').select('id,parent_id,driver_name,muatan,bongkar,tembak_released')
+      .not('driver_name', 'is', null))
+      .then(({ data }) => { setRows(groupTrips(data || [])); setLoading(false) })
   }, [])
 
   const drivers = useMemo(() => {
@@ -27,7 +27,7 @@ export default function FleetTembak() {
       if (!m.has(d.driver_name)) m.set(d.driver_name, { name: d.driver_name, outstanding: 0, ready: 0, released: 0 })
       const g = m.get(d.driver_name)
       if (d.tembak_released) g.released++
-      else { g.outstanding++; if (isReady(d)) g.ready++ }
+      else { g.outstanding++; if (tripReady(d)) g.ready++ }
     }
     let list = [...m.values()]
     const s = q.trim().toLowerCase()

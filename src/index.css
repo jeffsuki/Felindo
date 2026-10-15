@@ -330,6 +330,11 @@ textarea { resize: vertical; min-height: 72px; }
 .slip-grid td.r, .slip-grid th.r { text-align: right; }
 .row-locked td { background: #F7F5F1; }
 .row-locked input:disabled, .row-locked select:disabled { color: var(--text-2); cursor: not-allowed; }
+.slip-part td { background: #F7F9FA; border-bottom-style: dashed; }
+.slip-part.row-locked td { background: #F2F0EB; }
+.slip-grid td.slip-part-lbl { font-size: 12px; color: var(--accent-ink); padding-left: 14px; }
+.slip-grid td.slip-part-note { font-size: 11.5px; color: var(--muted); font-style: italic; }
+.part-badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px; font-size: 10.5px; background: var(--accent-wash); color: var(--accent-ink); white-space: nowrap; }
 .wh-grid { min-width: 1360px; }
 .wh-grid .row-inactive td { background: #F7F5F1; }
 .wh-grid .row-inactive input { color: var(--text-2); }

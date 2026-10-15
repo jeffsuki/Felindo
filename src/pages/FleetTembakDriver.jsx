@@ -3,19 +3,27 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Spinner, Empty, Badge, useToast } from '../components/ui'
 import { NumInput } from '../components/NumInput'
+import { groupTrips, legsOf, tripReady, tripSum, tripSusut, tripRoute } from '../lib/trips'
 
 const JENIS = ['Susut', 'Ganti Ban', 'Ganti Spare Part', 'Lainnya']
 const rp = n => (n === null || n === undefined || n === '') ? 'Rp 0' : 'Rp ' + Number(n).toLocaleString('id-ID')
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const susutOf = d => (d.muatan != null && d.bongkar != null) ? Number(d.muatan) - Number(d.bongkar) : null
-const isReady = d => d.muatan != null && d.bongkar != null
+const isReady = tripReady
 const sisaOf = d => num(d.tembak_amount) - num(d.tembak_potongan)
-const qualifies = d => {
+// A trip qualifies when every contract on the load is within its own tolerance.
+const legQualifies = d => {
   const s = susutOf(d); const tol = d.contract?.susut_tolerance
   if (s == null || tol == null) return null
   return s <= Number(tol) * Number(d.muatan)
 }
+const qualifies = t => {
+  const q = legsOf(t).map(legQualifies)
+  if (q.some(v => v === null)) return null
+  return q.every(Boolean)
+}
+const routeOf = t => tripRoute(t)
 
 export default function FleetTembakDriver() {
   const { name } = useParams()
@@ -35,11 +43,12 @@ export default function FleetTembakDriver() {
     setLoading(true)
     const [dl, rl] = await Promise.all([
       supabase.from('fleet_deliveries')
-        .select('id,do_no,tanggal,plate,driver_name,muatan,bongkar,tembak_amount,tembak_potongan,tembak_jenis_potongan,tembak_released,tembak_released_date,tembak_release_id,contract:fleet_contracts(control_no,origin,destination,susut_tolerance)')
+        .select('id,parent_id,do_no,tanggal,plate,driver_name,muatan,bongkar,tembak_amount,tembak_potongan,tembak_jenis_potongan,tembak_released,tembak_released_date,tembak_release_id,contract:fleet_contracts(control_no,origin,destination,susut_tolerance)')
         .eq('driver_name', driver).order('tanggal', { ascending: false, nullsFirst: false }),
       supabase.from('tembak_releases').select('*').eq('driver_name', driver).order('release_no', { ascending: false }),
     ])
-    setRows(dl.data || []); setBatches(rl.data || []); setLoading(false)
+    // One uang tembak per trip: contract parts (parent_id) fold into their slip.
+    setRows(groupTrips(dl.data || [])); setBatches(rl.data || []); setLoading(false)
   }
   useEffect(() => { load() }, [driver])
 
@@ -99,13 +108,13 @@ export default function FleetTembakDriver() {
                   </tr></thead>
                   <tbody>
                     {outTrips.map(d => {
-                      const s = susutOf(d); const q = qualifies(d); const r1 = isReady(d)
+                      const s = tripSusut(d); const q = qualifies(d); const r1 = isReady(d); const kg = tripSum(d, 'muatan')
                       return (
                         <tr key={d.id}>
                           <td>{r1 && <input type="checkbox" checked={sel.has(d.id)} onChange={() => toggleSel(d.id)} />}</td>
                           <td>{fmtDate(d.tanggal)}</td><td className="mono">{d.plate || '—'}</td>
-                          <td>{d.contract?.origin || '—'} → {d.contract?.destination || '—'}</td>
-                          <td className="r mono">{d.muatan != null ? Number(d.muatan).toLocaleString() : '—'}</td>
+                          <td>{routeOf(d)}{d.parts.length ? <span className="part-badge">{d.parts.length + 1} kontrak</span> : null}</td>
+                          <td className="r mono">{kg != null ? kg.toLocaleString() : '—'}</td>
                           <td className="r mono">{s != null ? s.toLocaleString() : '—'}</td>
                           <td>{q == null ? '—' : q ? <Badge tone="ok">Yes</Badge> : <Badge tone="urgent">No</Badge>}</td>
                           <td>{r1 ? <Badge tone="accent">Ready</Badge> : <Badge tone="muted">Pending</Badge>}</td>
@@ -141,7 +150,7 @@ export default function FleetTembakDriver() {
                             {b.trips.map(d => (
                               <tr key={d.id}>
                                 <td>{fmtDate(d.tanggal)}</td>
-                                <td>{d.contract?.origin || '—'} → {d.contract?.destination || '—'}</td>
+                                <td>{routeOf(d)}</td>
                                 <td className="r mono">{rp(d.tembak_amount)}</td>
                                 <td className="r mono">{rp(d.tembak_potongan)}</td>
                                 <td>{d.tembak_jenis_potongan || '—'}</td>
@@ -184,7 +193,7 @@ function ReleaseTable({ trips, onConfirm, onCancel }) {
                 return (
                   <tr key={d.id}>
                     <td>{fmtDate(d.tanggal)}</td>
-                    <td>{d.contract?.origin || '—'} → {d.contract?.destination || '—'}</td>
+                    <td>{routeOf(d)}</td>
                     <td><NumInput style={{ width: 120, textAlign: 'right' }} value={f[d.id].uang} onChange={n => set(d.id, 'uang', n)} onCommit={n => set(d.id, 'uang', n)} /></td>
                     <td><NumInput style={{ width: 120, textAlign: 'right' }} value={f[d.id].potongan} onChange={n => set(d.id, 'potongan', n)} onCommit={n => set(d.id, 'potongan', n)} /></td>
                     <td><select value={f[d.id].jenis} onChange={e => set(d.id, 'jenis', e.target.value)}><option value="">—</option>{JENIS.map(j => <option key={j} value={j}>{j}</option>)}</select></td>
@@ -225,7 +234,7 @@ function PayoutSlip({ driver, batch, trips, onClose }) {
             {trips.map(d => (
               <tr key={d.id}>
                 <td>{fmtDate(d.tanggal)}</td>
-                <td>{(d.contract?.origin || '—') + ' → ' + (d.contract?.destination || '—')}</td>
+                <td>{routeOf(d)}</td>
                 <td className="r">{rp(d.tembak_amount)}</td>
                 <td className="r">{rp(d.tembak_potongan)}</td>
                 <td>{d.tembak_jenis_potongan || '—'}</td>

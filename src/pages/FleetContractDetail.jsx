@@ -27,7 +27,11 @@ export default function FleetContractDetail() {
     setLoading(true)
     const [ct, dl, tr, dr] = await Promise.all([
       supabase.from('fleet_contracts').select('*').eq('id', id).single(),
-      supabase.from('fleet_deliveries').select('*').eq('contract_id', id).order('do_no', { ascending: true }),
+      // A load can carry two contracts: the slip row (main) and a part row on the other contract
+      // (parent_id = main). Embed the other side of each link for the badges.
+      supabase.from('fleet_deliveries')
+        .select('*, parent:parent_id(do_no,contract:fleet_contracts(control_no)), parts:fleet_deliveries!parent_id(id,do_no,contract:fleet_contracts(control_no))')
+        .eq('contract_id', id).order('do_no', { ascending: true }),
       supabase.from('trucks').select('id,plate,capacity_kg,status').eq('status', 'Active').order('plate'),
       supabase.from('drivers').select('name,nickname,status').eq('status', 'Active').order('name'),
     ])
@@ -116,7 +120,7 @@ export default function FleetContractDetail() {
                 <th style={{ width: 100 }}>Bongkar</th>
                 <th style={{ width: 90 }}>Susut</th>
                 <th style={{ width: 100 }}>Claim susut</th>
-                <th style={{ width: 120 }}></th>
+                <th style={{ width: 240 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -126,18 +130,23 @@ export default function FleetContractDetail() {
               {rows.map(d => {
                 const s = (d.muatan != null && d.muatan !== '' && d.bongkar != null && d.bongkar !== '') ? Number(d.muatan) - Number(d.bongkar) : null
                 const rowOver = c.susut_tolerance != null && d.muatan > 0 && s != null && (s / Number(d.muatan)) > Number(c.susut_tolerance)
+                // A part shares date / truck / driver with its slip; those are edited on the slip.
+                const isPart = !!d.parent_id
+                const main = isPart ? d.parent : null
+                const others = d.parts || []
+                const lockTip = isPart ? `Ikut slip utama${main?.contract?.control_no ? ` (kontrak ${main.contract.control_no})` : ''}` : undefined
                 return (
-                  <tr key={d.id}>
+                  <tr key={d.id} className={isPart ? 'slip-part' : ''}>
                     <td><input value={d.do_no ?? ''} onChange={e => setCell(d.id, 'do_no', e.target.value)} onBlur={e => saveField(d.id, 'do_no', e.target.value)} /></td>
-                    <td><input type="date" value={d.tanggal || ''} onChange={e => setCell(d.id, 'tanggal', e.target.value)} onBlur={e => saveField(d.id, 'tanggal', e.target.value)} /></td>
+                    <td><input type="date" disabled={isPart} title={lockTip} value={d.tanggal || ''} onChange={e => setCell(d.id, 'tanggal', e.target.value)} onBlur={e => saveField(d.id, 'tanggal', e.target.value)} /></td>
                     <td>
-                      <select value={d.truck_id || ''} onChange={e => saveTruck(d.id, e.target.value)}>
+                      <select disabled={isPart} title={lockTip} value={d.truck_id || ''} onChange={e => saveTruck(d.id, e.target.value)}>
                         <option value="">{d.plate || '—'}</option>
                         {trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}
                       </select>
                     </td>
                     <td>
-                      <select value={d.driver_name || ''} onChange={e => { setCell(d.id, 'driver_name', e.target.value); saveField(d.id, 'driver_name', e.target.value) }}>
+                      <select disabled={isPart} title={lockTip} value={d.driver_name || ''} onChange={e => { setCell(d.id, 'driver_name', e.target.value); saveField(d.id, 'driver_name', e.target.value) }}>
                         <option value="">—</option>
                         {drivers.map(dr => <option key={dr.name} value={dr.name}>{dr.name}{dr.nickname ? ` (${dr.nickname})` : ''}</option>)}
                         {d.driver_name && !drivers.some(x => x.name === d.driver_name) && <option value={d.driver_name}>{d.driver_name}</option>}
@@ -156,7 +165,14 @@ export default function FleetContractDetail() {
                       return claim > 0 ? fmtId(claim) : '0'
                     })()}</td>
                     <td className="dk-actions">
-                      <button className="btn ghost sm void-btn" onClick={() => { if (confirm('Remove this delivery?')) delRow(d.id) }}>✕</button>
+                      <button className="btn ghost sm void-btn" onClick={() => {
+                        const msg = isPart ? 'Remove this contract part from its slip?'
+                          : others.length ? `Remove this delivery? It is a slip that also carries ${others.map(o => o.contract?.control_no || '—').join(', ')} — that part and its recorded muatan/bongkar are removed too.`
+                          : 'Remove this delivery?'
+                        if (confirm(msg)) delRow(d.id)
+                      }}>✕</button>
+                      {isPart && <span className="part-badge" title={lockTip}>Slip {main?.contract?.control_no || '—'}{main?.do_no != null ? ` DO ${main.do_no}` : ''}</span>}
+                      {others.map(o => <span key={o.id} className="part-badge" title="Same load also carries this contract">+ {o.contract?.control_no || '—'}</span>)}
                     </td>
                   </tr>
                 )

@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase, isConfigured } from '../supabaseClient'
+import { supabase, isConfigured, fetchAll } from '../supabaseClient'
 import { Spinner, Empty, useToast } from '../components/ui'
 
 // Route history: pick Trucks or Drivers, drill into one to see routes driven.
@@ -14,7 +14,8 @@ export default function FleetHistory() {
 
   useEffect(() => {
     if (!isConfigured) { setLoading(false); return }
-    supabase.from('fleet_deliveries').select('plate,driver_name')
+    // Trips = slips; a second contract on the same load (parent_id set) is not another trip.
+    fetchAll(() => supabase.from('fleet_deliveries').select('id,plate,driver_name').is('parent_id', null))
       .then(({ data }) => { setRows(data || []); setLoading(false) })
   }, [])
 

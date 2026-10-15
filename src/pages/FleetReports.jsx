@@ -9,7 +9,9 @@ const ujNet = d => num(d.borongan) - num(d.selisih_bbm) - num(d.potongan_pihak) 
 const potOf = d => num(d.potongan_susut) + num(d.potongan_ban) + num(d.potongan_sparepart) + num(d.potongan_pm) + num(d.potongan_kasbon)
 const lainOf = d => num(d.potongan_lain)
 const penyOf = d => num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol) - num(d.selisih_bbm) - num(d.potongan_pihak)
-const tonaseOf = d => num(d.estimasi_muat) || num(d.muatan)
+const legTonase = d => num(d.estimasi_muat) || num(d.muatan)
+// Whole load: the slip plus any other contract carried on it (parts).
+const tonaseOf = d => legTonase(d) + (d.parts || []).reduce((a, p) => a + legTonase(p), 0)
 const detailLines = d => {
   const out = []
   if (num(d.potongan_susut)) out.push(['Pot Susut', -num(d.potongan_susut), 'pot'])
@@ -59,7 +61,12 @@ export default function FleetReports() {
     Promise.all([
       supabase.from('fleet_deliveries').select(sel).eq('tanggal', date).not('borongan', 'is', null),
       supabase.from('fleet_deliveries').select(sel).eq('tembak_released_date', date),
-    ]).then(([a, b]) => { setUj(a.data || []); setTb(b.data || []); setLoading(false) })
+      // other contracts carried on the same slips (no money of their own)
+      supabase.from('fleet_deliveries').select('id,parent_id,estimasi_muat,muatan,contract:fleet_contracts(control_no,origin,destination)').eq('tanggal', date).not('parent_id', 'is', null),
+    ]).then(([a, b, c]) => {
+      const parts = {}; (c.data || []).forEach(p => { (parts[p.parent_id] = parts[p.parent_id] || []).push(p) })
+      setUj((a.data || []).map(d => ({ ...d, parts: parts[d.id] || [] }))); setTb(b.data || []); setLoading(false)
+    })
   }, [date])
 
   const route = d => `${d.contract?.origin || '—'} - ${d.contract?.destination || '—'}`
@@ -114,7 +121,7 @@ export default function FleetReports() {
                             <td className="r mono">{nf(tonaseOf(d))}</td><td className="r mono">{nf(d.borongan)}</td><td className="r mono">{penyOf(d) ? nf(penyOf(d)) : ''}</td>
                             <td className="r mono">{nf(d.bbm_liter)}</td><td className="r mono">{nf(d.price_per_liter)}</td><td className="r mono">{nf(d.bbm_rupiah)}</td>
                             <td className="r mono">{nf(potOf(d))}</td><td className="r mono">{nf(lainOf(d))}</td>
-                            <td className="r mono">{nf(ujNet(d))}</td><td>{d.keterangan || ''}{det.length ? <span className="lb-caret">{open ? ' ▾' : ' ▸'}</span> : ''}</td>
+                            <td className="r mono">{nf(ujNet(d))}</td><td>{d.parts?.length ? <span className="part-badge" style={{ marginLeft: 0, marginRight: 6 }}>+ {d.parts.map(p => `${p.contract?.control_no || '—'} ${p.contract?.origin || '—'}-${p.contract?.destination || '—'}`).join(', ')}</span> : null}{d.keterangan || ''}{det.length ? <span className="lb-caret">{open ? ' ▾' : ' ▸'}</span> : ''}</td>
                           </tr>
                           {open && det.map(([label, amt, grp], k) => (
                             <tr className="lb-detail" key={d.id + 'd' + k}>

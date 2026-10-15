@@ -1,12 +1,16 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { supabase, isConfigured } from '../supabaseClient'
+import { supabase, isConfigured, fetchAll } from '../supabaseClient'
 import { Spinner, Empty, useToast } from '../components/ui'
+import { groupTrips, legsOf, tripSum, tripSusut, tripRoute, tripControls } from '../lib/trips'
 
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
-const susutOf = d => (d.muatan != null && d.bongkar != null) ? Number(d.muatan) - Number(d.bongkar) : null
 const nf = n => (n === null || n === undefined || n === '') ? '—' : Number(n).toLocaleString('id-ID')
-const kmOf = d => d.contract?.distance_km != null ? Number(d.contract.distance_km) * 2 : null   // round trip
+// Round trip on the longest contract route of the load (a two-contract load is one trip).
+const kmOf = t => {
+  const d = legsOf(t).map(r => r.contract?.distance_km).filter(v => v != null).map(Number)
+  return d.length ? Math.max(...d) * 2 : null
+}
 
 export default function FleetHistoryDetail() {
   const { mode, key } = useParams()
@@ -23,15 +27,21 @@ export default function FleetHistoryDetail() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
     const col = isTruck ? 'plate' : 'driver_name'
-    supabase.from('fleet_deliveries')
-      .select('id,tanggal,plate,driver_name,muatan,bongkar,contract:fleet_contracts(control_no,origin,destination,distance_km)')
-      .eq(col, who).order('tanggal', { ascending: false, nullsFirst: false })
-      .then(({ data }) => { setRows(data || []); setLoading(false) })
+    fetchAll(() => supabase.from('fleet_deliveries')
+      .select('id,parent_id,tanggal,tanggal_bongkar,plate,driver_name,muatan,bongkar,contract:fleet_contracts(control_no,origin,destination,distance_km)')
+      .eq(col, who))
+      .then(({ data }) => {
+        // One row per trip (contract parts fold into their slip).
+        // Trip date = slip date, or the unload date for historical trips that have no slip.
+        const rows = groupTrips(data || []).map(d => ({ ...d, tgl: d.tanggal || d.tanggal_bongkar || null }))
+        rows.sort((a, b) => (b.tgl || '').localeCompare(a.tgl || ''))
+        setRows(rows); setLoading(false)
+      })
   }, [mode, who])
 
   const trips = useMemo(() => rows.filter(d => {
-    if (from && (!d.tanggal || d.tanggal < from)) return false
-    if (to && (!d.tanggal || d.tanggal > to)) return false
+    if (from && (!d.tgl || d.tgl < from)) return false
+    if (to && (!d.tgl || d.tgl > to)) return false
     return true
   }), [rows, from, to])
 
@@ -39,7 +49,7 @@ export default function FleetHistoryDetail() {
   const routeCounts = useMemo(() => {
     const m = new Map()
     for (const d of trips) {
-      const r = `${d.contract?.origin || '—'} → ${d.contract?.destination || '—'}`
+      const r = tripRoute(d)
       m.set(r, (m.get(r) || 0) + 1)
     }
     return [...m.entries()].sort((a, b) => b[1] - a[1])
@@ -79,14 +89,14 @@ export default function FleetHistoryDetail() {
                 </tr></thead>
                 <tbody>
                   {trips.map(d => {
-                    const s = susutOf(d); const km = kmOf(d)
+                    const s = tripSusut(d); const km = kmOf(d); const kg = tripSum(d, 'muatan')
                     return (
                       <tr key={d.id}>
-                        <td>{fmtDate(d.tanggal)}</td>
-                        <td>{d.contract?.origin || '—'} → {d.contract?.destination || '—'}</td>
-                        <td className="mono">{d.contract?.control_no || '—'}</td>
+                        <td>{fmtDate(d.tgl)}</td>
+                        <td>{tripRoute(d)}</td>
+                        <td className="mono">{tripControls(d)}</td>
                         <td className={isTruck ? '' : 'mono'}>{isTruck ? (d.driver_name || '—') : (d.plate || '—')}</td>
-                        <td className="r mono">{nf(d.muatan)}</td>
+                        <td className="r mono">{nf(kg)}</td>
                         <td className="r mono">{s != null ? Number(s).toLocaleString('id-ID') : '—'}</td>
                         <td className="r mono">{km != null ? km.toLocaleString('id-ID') : '—'}</td>
                       </tr>

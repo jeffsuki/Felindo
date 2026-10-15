@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase, isConfigured } from '../supabaseClient'
+import { supabase, isConfigured, fetchAll } from '../supabaseClient'
 import { Spinner, Empty, useToast } from '../components/ui'
 import { NumInput } from '../components/NumInput'
 import SearchSelect from '../components/SearchSelect'
@@ -31,7 +31,7 @@ export default function FleetHutang() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
     const [dl, cl, dr, ln, rp2] = await Promise.all([
-      supabase.from('fleet_deliveries').select('driver_name,tanggal,muatan,bongkar,bbm_liter,potongan_susut,potongan_ban,potongan_sparepart,potongan_kasbon,contract:fleet_contracts(susut_tolerance,price_per_kg)').not('driver_name', 'is', null),
+      fetchAll(() => supabase.from('fleet_deliveries').select('id,driver_name,tanggal,muatan,bongkar,bbm_liter,potongan_susut,potongan_ban,potongan_sparepart,potongan_kasbon,contract:fleet_contracts(susut_tolerance,price_per_kg)').not('driver_name', 'is', null)),
       supabase.from('fleet_driver_claims').select('driver_name,jenis,amount'),
       supabase.from('drivers').select('name,nickname,status'),
       supabase.from('fleet_driver_loans').select('driver_name,jenis,amount,liter,tanggal'),

@@ -1,9 +1,10 @@
-import { useEffect, useState, useMemo } from 'react'
-import { supabase, isConfigured } from '../supabaseClient'
+import { useEffect, useState, useMemo, Fragment } from 'react'
+import { supabase, isConfigured, fetchAll } from '../supabaseClient'
 import { Spinner, Empty, useToast } from '../components/ui'
 import SearchSelect from '../components/SearchSelect'
 import { NumInput, fmtId } from '../components/NumInput'
 import { checkPassword, gateEnabled } from '../components/Gate'
+import { groupTrips } from '../lib/trips'
 
 const num = v => (v === null || v === undefined || v === '') ? null : Number(v)
 const JENIS_POT = ['Susut', 'Ganti Ban', 'Ganti Spare Part', 'Lainnya']
@@ -35,12 +36,15 @@ export default function FleetSlips() {
   const [adjFor, setAdjFor] = useState(null)
   const [unlocked, setUnlocked] = useState(new Set())
   const [unlockFor, setUnlockFor] = useState(null)
+  const [partFor, setPartFor] = useState(null)
 
   async function load() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
     const [dl, ct, tr, dr] = await Promise.all([
-      supabase.from('fleet_deliveries').select('*, contract:fleet_contracts(control_no,client,origin,destination)').order('tanggal', { ascending: false, nullsFirst: false }),
+      // Only real slips: historical trips imported from RINCI have no slip date and stay out of this page.
+      // Contract parts (parent_id set) come along and are shown under their slip.
+      fetchAll(() => supabase.from('fleet_deliveries').select('*, contract:fleet_contracts(control_no,client,origin,destination)').not('tanggal', 'is', null).order('tanggal', { ascending: false })),
       supabase.from('fleet_contracts').select('id,control_no,client,origin,destination').order('control_no'),
       supabase.from('trucks').select('id,plate,capacity_kg,status').eq('status', 'Active').order('plate'),
       supabase.from('drivers').select('name,nickname,status').eq('status', 'Active').order('name'),
@@ -50,15 +54,18 @@ export default function FleetSlips() {
   }
   useEffect(() => { load() }, [])
 
+  // One entry per slip; a second (third…) contract on the same load sits in d.parts.
+  const slips = useMemo(() => groupTrips(rows), [rows])
   const visible = useMemo(() => {
     const s = q.trim().toLowerCase()
-    return rows.filter(d => {
+    return slips.filter(d => {
       if (filter === 'filled' && !isFilled(d)) return false
       if (filter === 'blank' && isFilled(d)) return false
       if (!s) return true
-      return `${d.plate} ${d.driver_name} ${d.contract?.control_no} ${d.contract?.client}`.toLowerCase().includes(s)
+      const ctl = [d, ...d.parts].map(x => `${x.contract?.control_no} ${x.contract?.client}`).join(' ')
+      return `${d.plate} ${d.driver_name} ${ctl}`.toLowerCase().includes(s)
     })
-  }, [rows, q, filter])
+  }, [slips, q, filter])
   const total = useMemo(() => visible.reduce((a, d) => a + netOf(d), 0), [visible])
 
   // locked = there is a password, the slip's date is before today, and not unlocked this session
@@ -83,28 +90,81 @@ export default function FleetSlips() {
   async function saveTruck(did, truckId) {
     const t = trucks.find(x => x.id === truckId)
     const patch = { truck_id: truckId || null, plate: t?.plate || null }
-    if (t && t.capacity_kg != null) patch.estimasi_muat = Number(t.capacity_kg)
+    // estimate = truck capacity, less whatever the slip's other contracts are estimated to carry
+    const partsEst = rows.filter(r => r.parent_id === did).reduce((a, r) => a + Number(r.estimasi_muat || 0), 0)
+    if (t && t.capacity_kg != null) patch.estimasi_muat = Math.max(Number(t.capacity_kg) - partsEst, 0)
     setRows(rs => rs.map(r => r.id === did ? { ...r, ...patch } : r))
     const { error } = await supabase.from('fleet_deliveries').update(patch).eq('id', did)
     if (error) show(error.message, true)
   }
+  // Moving a slip (or a part) to another contract gives it the next DO number there.
   async function saveContractLink(did, cid) {
     const c = contracts.find(x => x.id === cid)
-    setRows(rs => rs.map(r => r.id === did ? { ...r, contract_id: cid, contract: c ? { control_no: c.control_no, origin: c.origin, destination: c.destination, client: c.client } : r.contract } : r))
-    const { error } = await supabase.from('fleet_deliveries').update({ contract_id: cid }).eq('id', did)
-    if (error) show(error.message, true)
+    try {
+      const doNo = await nextDo(cid)
+      const { error } = await supabase.from('fleet_deliveries').update({ contract_id: cid, do_no: doNo }).eq('id', did)
+      if (error) throw error
+      setRows(rs => rs.map(r => r.id === did ? { ...r, contract_id: cid, do_no: doNo, contract: c ? { control_no: c.control_no, origin: c.origin, destination: c.destination, client: c.client } : r.contract } : r))
+    } catch (e) { show(e.message, true) }
   }
+  // Removing a slip also removes its contract parts (on delete cascade).
   async function delRow(did) {
     const { error } = await supabase.from('fleet_deliveries').delete().eq('id', did)
     if (error) return show(error.message, true)
-    setRows(rs => rs.filter(r => r.id !== did))
+    setRows(rs => rs.filter(r => r.id !== did && r.parent_id !== did))
   }
-  async function createSlip(fields) {
-    const existing = rows.filter(r => r.contract_id === fields.contract_id)
-    const nextNo = existing.reduce((m, d) => Math.max(m, d.do_no || 0), 0) + 1
-    const { error } = await supabase.from('fleet_deliveries').insert({ do_no: nextNo, ...fields })
+  // Removing a contract part hands its estimated kg back to the slip's own contract.
+  async function delPart(main, part) {
+    const { error } = await supabase.from('fleet_deliveries').delete().eq('id', part.id)
     if (error) return show(error.message, true)
-    show('Slip created.'); setAdding(false); load()
+    setRows(rs => rs.filter(r => r.id !== part.id))
+    if (part.estimasi_muat != null && main.estimasi_muat != null) {
+      const est = Number(main.estimasi_muat) + Number(part.estimasi_muat)
+      const { error: e2 } = await supabase.from('fleet_deliveries').update({ estimasi_muat: est }).eq('id', main.id)
+      if (e2) return show('Contract removed, but the slip estimate was not restored: ' + e2.message, true)
+      setRows(rs => rs.map(r => r.id === main.id ? { ...r, estimasi_muat: est } : r))
+    }
+  }
+  // Next DO number within a contract, read from the database so rows not on this
+  // page (historical trips without a slip date, other slips' parts) are counted.
+  async function nextDo(contractId) {
+    const { data, error } = await supabase.from('fleet_deliveries').select('do_no')
+      .eq('contract_id', contractId).not('do_no', 'is', null).order('do_no', { ascending: false }).limit(1)
+    if (error) throw error
+    return Number(data?.[0]?.do_no || 0) + 1
+  }
+  const partRow = (main, contractId, est) => ({
+    parent_id: main.id, contract_id: contractId, estimasi_muat: est ?? null,
+    tanggal: main.tanggal ?? null, truck_id: main.truck_id ?? null, plate: main.plate ?? null, driver_name: main.driver_name ?? null,
+  })
+  async function createSlip(fields, second) {
+    let main
+    try {
+      const { data, error } = await supabase.from('fleet_deliveries').insert({ do_no: await nextDo(fields.contract_id), ...fields }).select('*').single()
+      if (error) throw error
+      main = data
+    } catch (e) { return show(e.message, true) }
+    if (second) {
+      try {
+        const { error } = await supabase.from('fleet_deliveries').insert({ do_no: await nextDo(second.contract_id), ...partRow(main, second.contract_id, second.estimasi_muat) })
+        if (error) throw error
+      } catch (e) { show('Slip created, but the second contract was not added: ' + e.message, true); setAdding(false); load(); return }
+    }
+    show(second ? 'Slip created with two contracts.' : 'Slip created.'); setAdding(false); load()
+  }
+  // Add another contract to an existing slip (same truck load).
+  async function addPart(main, { contract_id, est_main, est_part }) {
+    try {
+      const { error } = await supabase.from('fleet_deliveries').insert({ do_no: await nextDo(contract_id), ...partRow(main, contract_id, est_part) })
+      if (error) throw error
+    } catch (e) { return show(e.message, true) }
+    // the part exists now: close and reload whatever happens to the estimate update
+    let msg = 'Contract added to the slip.', bad = false
+    if (est_main !== (main.estimasi_muat == null ? null : Number(main.estimasi_muat))) {
+      const { error } = await supabase.from('fleet_deliveries').update({ estimasi_muat: est_main }).eq('id', main.id)
+      if (error) { msg = 'Contract added, but the slip estimate was not updated: ' + error.message; bad = true }
+    }
+    show(msg, bad); setPartFor(null); load()
   }
   function tryUnlock(pw) {
     if (checkPassword(pw)) { setUnlocked(s => new Set(s).add(unlockFor)); setUnlockFor(null) }
@@ -118,7 +178,8 @@ export default function FleetSlips() {
   }
 
   if (loading) return (<><div className="topbar"><div><h1>Slip Uang Jalan</h1></div></div><div className="content"><Spinner /></div></>)
-  const active = rows.find(r => r.id === printId)
+  const active = slips.find(r => r.id === printId)
+  const partMain = slips.find(r => r.id === partFor)
 
   return (
     <>
@@ -154,19 +215,22 @@ export default function FleetSlips() {
                 <tbody>
                   {visible.map(d => {
                     const locked = isLocked(d)
+                    const partCtl = d.parts.map(p => p.contract?.control_no || '—').join(', ')
                     return (
-                      <tr key={d.id} className={locked ? 'row-locked' : ''}>
+                      <Fragment key={d.id}>
+                      <tr className={locked ? 'row-locked' : ''}>
                         <td className="dk-actions">
                           <button className="btn ghost sm" onClick={() => setPrintId(d.id)}>Print</button>
                           <button className={'btn ghost sm' + (hasAdj(d) ? ' driver-on' : '')} disabled={locked} onClick={() => setAdjFor(d.id)}>Adj{hasAdj(d) ? ' ✓' : ''}</button>
+                          <button className="btn ghost sm" disabled={locked} title="Satu muatan, kontrak lain — tambah kontrak ke slip ini" onClick={() => setPartFor(d.id)}>+ Kontrak</button>
                           {locked
                             ? <button className="btn ghost sm" title="Past-dated — unlock to edit" onClick={() => setUnlockFor(d.id)}>🔒</button>
-                            : <button className="btn ghost sm void-btn" onClick={() => { if (confirm('Remove this slip/delivery?')) delRow(d.id) }}>✕</button>}
+                            : <button className="btn ghost sm void-btn" onClick={() => { if (confirm(d.parts.length ? `Remove this slip? The other contract on this load (${partCtl}) is removed too, with its recorded muatan/bongkar.` : 'Remove this slip/delivery?')) delRow(d.id) }}>✕</button>}
                         </td>
                         <td><input type="date" disabled={locked} value={d.tanggal || ''} onChange={e => setCell(d.id, 'tanggal', e.target.value)} onBlur={e => saveField(d.id, 'tanggal', e.target.value)} /></td>
                         <td><select disabled={locked} value={d.truck_id || ''} onChange={e => saveTruck(d.id, e.target.value)}><option value="">{d.plate || '—'}</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></td>
                         <td><select disabled={locked} value={d.driver_name || ''} onChange={e => { setCell(d.id, 'driver_name', e.target.value); saveField(d.id, 'driver_name', e.target.value) }}><option value="">—</option>{drivers.map(dr => <option key={dr.name} value={dr.name}>{dr.name}</option>)}{d.driver_name && !drivers.some(x => x.name === d.driver_name) && <option value={d.driver_name}>{d.driver_name}</option>}</select></td>
-                        <td><select disabled={locked} value={d.contract_id || ''} onChange={e => saveContractLink(d.id, e.target.value)}>{contracts.map(c => <option key={c.id} value={c.id}>{c.control_no}</option>)}</select></td>
+                        <td><select disabled={locked} value={d.contract_id || ''} onChange={e => saveContractLink(d.id, e.target.value)}>{contracts.filter(c => !d.parts.some(p => p.contract_id === c.id)).map(c => <option key={c.id} value={c.id}>{c.control_no}</option>)}</select></td>
                         <td className="ro">{d.contract?.origin || '—'}</td>
                         <td className="ro">{d.contract?.destination || '—'}</td>
                         <td><NumInput disabled={locked} value={d.borongan} onChange={n => setCell(d.id, 'borongan', n)} onCommit={n => saveField(d.id, 'borongan', n)} /></td>
@@ -183,6 +247,19 @@ export default function FleetSlips() {
                         <td className="mono ro r" style={{ fontWeight: 700 }}>{isFilled(d) ? rp(netOf(d)) : '—'}</td>
                         <td><input disabled={locked} value={d.keterangan || ''} onChange={e => setCell(d.id, 'keterangan', e.target.value)} onBlur={e => saveField(d.id, 'keterangan', e.target.value)} /></td>
                       </tr>
+                      {d.parts.map((p, i) => (
+                        <tr key={p.id} className={'slip-part' + (locked ? ' row-locked' : '')}>
+                          <td className="dk-actions">
+                            {!locked && <button className="btn ghost sm void-btn" title="Remove this contract from the slip" onClick={() => { if (confirm(`Remove contract ${p.contract?.control_no || ''} from this slip? Its recorded muatan/bongkar on that contract are deleted too.`)) delPart(d, p) }}>✕</button>}
+                          </td>
+                          <td colSpan={3} className="ro slip-part-lbl">↳ Kontrak ke-{i + 2} · DO {p.do_no ?? '—'}</td>
+                          <td><select disabled={locked} value={p.contract_id || ''} onChange={e => saveContractLink(p.id, e.target.value)}>{contracts.filter(c => c.id === p.contract_id || (c.id !== d.contract_id && !d.parts.some(o => o.contract_id === c.id))).map(c => <option key={c.id} value={c.id}>{c.control_no}</option>)}</select></td>
+                          <td className="ro">{p.contract?.origin || '—'}</td>
+                          <td className="ro">{p.contract?.destination || '—'}</td>
+                          <td colSpan={13} className="ro slip-part-note">Muatan masuk kontrak ini · uang jalan ikut slip di atas{p.estimasi_muat != null ? ` · est. muat ${fmtId(p.estimasi_muat)} kg` : ''}</td>
+                        </tr>
+                      ))}
+                      </Fragment>
                     )
                   })}
                 </tbody>
@@ -192,6 +269,7 @@ export default function FleetSlips() {
         )}
       </div>
       {active && <SlipPrintH d={active} c={active.contract || {}} onClose={() => setPrintId(null)} />}
+      {partMain && <AddPartModal main={partMain} contracts={contracts} onSave={f => addPart(partMain, f)} onClose={() => setPartFor(null)} />}
       {adjFor && <AdjustModal d={rows.find(r => r.id === adjFor)} onSave={p => saveAdj(adjFor, p)} onClose={() => setAdjFor(null)} />}
       {unlockFor && <UnlockModal onOk={tryUnlock} onCancel={() => setUnlockFor(null)} />}
       {node}
@@ -268,16 +346,58 @@ function AdjustModal({ d, onSave, onClose }) {
   )
 }
 
+// Same truck load, another contract: the part only records that contract's kg.
+function AddPartModal({ main, contracts, onSave, onClose }) {
+  const taken = new Set([main.contract_id, ...main.parts.map(p => p.contract_id)])
+  const [cid, setCid] = useState('')
+  // The load is split: the slip's own estimate goes down by what this contract takes,
+  // unless the main estimate is typed in by hand.
+  const base = main.estimasi_muat == null ? null : Number(main.estimasi_muat)
+  const [estMain, setEstMain] = useState(base ?? '')
+  const [mainTyped, setMainTyped] = useState(false)
+  const [estPart, setEstPart] = useState('')
+  function onPart(v) {
+    setEstPart(v)
+    if (!mainTyped && base != null) setEstMain(Math.max(base - (v === '' ? 0 : Number(v)), 0))
+  }
+  const [err, setErr] = useState('')
+  const orNull = v => (v === '' || v === null || v === undefined) ? null : Number(v)
+  function save() {
+    if (!cid) return setErr('Pick the other contract.')
+    onSave({ contract_id: cid, est_main: orNull(estMain), est_part: orNull(estPart) })
+  }
+  return (
+    <div className="slip-scrim">
+      <div className="rel-modal nsf" style={{ width: 480 }}>
+        <div className="slip-h" style={{ fontSize: 18 }}>Tambah kontrak · {main.plate || '—'} · {fmtDate(main.tanggal)}</div>
+        <div className="nsf-note" style={{ marginTop: 0 }}>Satu muatan, dua kontrak. Uang jalan tetap di slip ini; kontrak tambahan hanya mencatat muatan dan bongkar-nya sendiri (diisi di halaman kontrak).</div>
+        <div className="nsf-grid" style={{ marginTop: 10 }}>
+          <div className="nsf-f" style={{ gridColumn: '1 / -1' }}><span>Kontrak lain *</span><SearchSelect value={cid} onChange={setCid} placeholder="Pick…" options={contracts.filter(c => !taken.has(c.id)).map(c => ({ value: c.id, label: c.control_no, sub: `${c.origin || '—'} → ${c.destination || '—'}`, search: c.client || '' }))} /></div>
+          <label><span>Est. muat {main.contract?.control_no || 'kontrak utama'} (kg)</span><NumInput value={estMain} onChange={v => { setMainTyped(true); setEstMain(v) }} onCommit={v => setEstMain(v)} /></label>
+          <label><span>Est. muat kontrak ini (kg)</span><NumInput value={estPart} onChange={onPart} onCommit={onPart} /></label>
+        </div>
+        {err && <div style={{ color: 'var(--urgent)', fontSize: 12, marginTop: 6 }}>{err}</div>}
+        <div className="btn-group" style={{ marginTop: 14, justifyContent: 'flex-end' }}>
+          <button className="btn primary" onClick={save}>Add contract</button>
+          <button className="btn ghost" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   const [f, setF] = useState({
     contract_id: '', truck_id: '', driver_name: '', tanggal: new Date().toISOString().slice(0, 10),
     borongan: '', bbm_liter: '', price_per_liter: '', potongan_susut: '', potongan_ban: '', potongan_sparepart: '', potongan_lain: '', potongan_pm: '40000', potongan_kasbon: '',
     selisih_liter: '', selisih_price: '', potongan_pihak: '', potongan_pihak_nama: '',
     tambahan_cuci: '', tambahan_steam: '', tambahan_tol: '', is_retur: false, keterangan: '',
+    contract2_id: '', est2: '',
   })
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
   const [err, setErr] = useState('')
   const [showAdj, setShowAdj] = useState(false)
+  const [showK2, setShowK2] = useState(false)
   const [outstanding, setOutstanding] = useState({ kasbon: 0, bbm: 0 })
   const nz = v => (v === '' || v === null || v === undefined) ? 0 : Number(v)
   const orNull = v => (v === '' || v === null || v === undefined) ? null : Number(v)
@@ -312,14 +432,19 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   const sisa = nz(f.borongan) - selisih - nz(f.potongan_pihak) - totalBbm - potTot
     + nz(f.tambahan_cuci) + nz(f.tambahan_steam) + nz(f.tambahan_tol)
 
+  // Two contracts on one load: the second takes its estimate out of the truck's capacity.
+  const k2 = showK2 && f.contract2_id ? f.contract2_id : ''
+  const cap = truck?.capacity_kg != null ? Number(truck.capacity_kg) : null
+  const estMain = cap == null ? null : (k2 && orNull(f.est2) != null ? Math.max(cap - Number(f.est2), 0) : cap)
   function submit() {
     if (!f.contract_id) return setErr('Pick a contract.')
+    if (k2 && k2 === f.contract_id) return setErr('The second contract must be different from the first.')
     if (nz(f.borongan) <= 0) return setErr('Borongan is required.')
     if (f.potongan_pm === '' || f.potongan_pm === null) return setErr('PM is required.')
     onCreate({
       contract_id: f.contract_id, truck_id: f.truck_id || null, plate: truck?.plate || null,
       driver_name: f.driver_name || null, tanggal: f.tanggal || null,
-      estimasi_muat: truck?.capacity_kg != null ? Number(truck.capacity_kg) : null,
+      estimasi_muat: estMain,
       borongan: orNull(f.borongan), bbm_liter: orNull(f.bbm_liter), price_per_liter: orNull(f.price_per_liter), bbm_rupiah: totalBbm || null,
       potongan_susut: orNull(f.potongan_susut), potongan_ban: orNull(f.potongan_ban), potongan_sparepart: orNull(f.potongan_sparepart), potongan_lain: orNull(f.potongan_lain), potongan_pm: orNull(f.potongan_pm),
       potongan_kasbon: orNull(f.potongan_kasbon),
@@ -327,7 +452,7 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
       potongan_pihak: orNull(f.potongan_pihak), potongan_pihak_nama: f.potongan_pihak_nama || null,
       tambahan_cuci: orNull(f.tambahan_cuci), tambahan_steam: orNull(f.tambahan_steam), tambahan_tol: orNull(f.tambahan_tol),
       is_retur: f.is_retur, keterangan: f.keterangan.trim() || null,
-    })
+    }, k2 ? { contract_id: k2, estimasi_muat: orNull(f.est2) } : null)
   }
 
   return (
@@ -350,6 +475,15 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
           {f.driver_name ? <span className="nsf-out">Sisa: {rp(outstanding.kasbon)}{outstanding.kasbon > 0 ? <button type="button" className="nsf-deduct" onClick={() => set('potongan_kasbon', String(outstanding.kasbon))}>Deduct</button> : null}</span> : null}</label>
       </div>
       <div className="nsf-note">Total BBM: {rp(totalBbm)}</div>
+
+      <button type="button" className="btn ghost nsf-toggle" onClick={() => setShowK2(v => !v)}>{showK2 ? '\u25be' : '\u25b8'} Kontrak kedua — satu muatan, dua kontrak (opsional)</button>
+      {showK2 && (
+        <div className="nsf-adj"><div className="nsf-grid">
+          <div className="nsf-f"><span>Kontrak kedua</span><SearchSelect value={f.contract2_id} onChange={v => set('contract2_id', v)} placeholder="Pick…" options={contracts.filter(c => c.id !== f.contract_id).map(c => ({ value: c.id, label: c.control_no, sub: `${c.origin || '—'} → ${c.destination || '—'}`, search: c.client || '' }))} /></div>
+          <label><span>Est. muat kontrak kedua (kg)</span><NumInput value={f.est2} onChange={v => set('est2', v)} onCommit={v => set('est2', v)} /></label>
+          <div className="nsf-note" style={{ gridColumn: '1 / -1', marginTop: 0 }}>Uang jalan tetap satu slip (kontrak pertama). Kontrak kedua mendapat nomor DO sendiri; muatan/bongkar-nya diisi di halaman kontrak.{k2 && cap != null ? ` Est. muat kontrak pertama: ${fmtId(estMain)} kg.` : ''}</div>
+        </div></div>
+      )}
 
       <button type="button" className="btn ghost nsf-toggle" onClick={() => setShowAdj(v => !v)}>{showAdj ? '\u25be Sembunyikan' : '\u25b8 Tampilkan'} Penyesuaian — Selisih BBM, Potongan ANS/MNA, Cuci, Steam, Tol, Retur</button>
       {showAdj && (
@@ -379,6 +513,8 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
 }
 
 function SlipPrintH({ d, c, onClose }) {
+  const parts = d.parts || []
+  const span = 1 + parts.length
   return (
     <div className="slip-scrim">
       <div className="slip-hp">
@@ -387,7 +523,7 @@ function SlipPrintH({ d, c, onClose }) {
           <div><b>Plat BK:</b> {d.plate || '—'}</div>
           <div><b>Tanggal DO:</b> {fmtDate(d.tanggal)}</div>
           <div><b>Nama Supir:</b> {d.driver_name || '—'}</div>
-          <div><b>Nomor DO:</b> {d.do_no}</div>
+          <div><b>Nomor DO:</b> {[d.do_no, ...parts.map(p => p.do_no)].map(n => n ?? '—').join(' / ')}</div>
         </div>
         <table className="slip-hp-tbl">
           <thead><tr>
@@ -396,10 +532,13 @@ function SlipPrintH({ d, c, onClose }) {
           </tr></thead>
           <tbody><tr>
             <td>{d.do_no}</td><td>{c.control_no || '—'}</td><td>{c.origin || '—'}</td><td>{c.destination || '—'}</td>
-            <td className="r">{rp(d.borongan)}</td><td className="r">{d.bbm_liter || ''}</td><td className="r">{rp(d.price_per_liter)}</td><td className="r">{rp(totalBbm(d))}</td>
-            <td className="r">{rp(d.potongan_susut)}</td><td className="r">{rp(d.potongan_ban)}</td><td className="r">{rp(d.potongan_sparepart)}</td><td className="r">{rp(d.potongan_lain)}</td><td className="r">{rp(d.potongan_pm)}</td><td className="r">{rp(d.potongan_kasbon)}</td>
-            <td className="r" style={{ fontWeight: 800 }}>{rp(netOf(d))}</td><td>{d.keterangan || ''}</td>
-          </tr></tbody>
+            <td className="r" rowSpan={span}>{rp(d.borongan)}</td><td className="r" rowSpan={span}>{d.bbm_liter || ''}</td><td className="r" rowSpan={span}>{rp(d.price_per_liter)}</td><td className="r" rowSpan={span}>{rp(totalBbm(d))}</td>
+            <td className="r" rowSpan={span}>{rp(d.potongan_susut)}</td><td className="r" rowSpan={span}>{rp(d.potongan_ban)}</td><td className="r" rowSpan={span}>{rp(d.potongan_sparepart)}</td><td className="r" rowSpan={span}>{rp(d.potongan_lain)}</td><td className="r" rowSpan={span}>{rp(d.potongan_pm)}</td><td className="r" rowSpan={span}>{rp(d.potongan_kasbon)}</td>
+            <td className="r" rowSpan={span} style={{ fontWeight: 800 }}>{rp(netOf(d))}</td><td rowSpan={span}>{d.keterangan || ''}</td>
+          </tr>
+          {parts.map(p => (
+            <tr key={p.id}><td>{p.do_no ?? '—'}</td><td>{p.contract?.control_no || '—'}</td><td>{p.contract?.origin || '—'}</td><td>{p.contract?.destination || '—'}</td></tr>
+          ))}</tbody>
         </table>
         {hasAdj(d) && (
           <table className="slip-hp-tbl" style={{ marginTop: 8 }}>
