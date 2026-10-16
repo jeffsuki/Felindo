@@ -5,10 +5,10 @@ import { Spinner, Empty, useToast } from '../components/ui'
 const nf = n => (n === null || n === undefined || n === '' || Number(n) === 0) ? '' : Number(n).toLocaleString('id-ID')
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
 const fmtDay = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'long', year: 'numeric' }) : ''
-const ujNet = d => num(d.borongan) - num(d.selisih_bbm) - num(d.potongan_pihak) - num(d.bbm_rupiah) - (num(d.potongan_susut) + num(d.potongan_ban) + num(d.potongan_sparepart) + num(d.potongan_lain) + num(d.potongan_pm) + num(d.potongan_kasbon)) + num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol)
+const ujNet = d => num(d.borongan) - num(d.selisih_bbm) - num(d.potongan_pihak) - num(d.bbm_rupiah) - (num(d.potongan_susut) + num(d.potongan_ban) + num(d.potongan_sparepart) + num(d.potongan_lain) + num(d.potongan_pm) + num(d.potongan_kasbon)) + num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol) + num(d.tambahan_bantuan)
 const potOf = d => num(d.potongan_susut) + num(d.potongan_ban) + num(d.potongan_sparepart) + num(d.potongan_pm) + num(d.potongan_kasbon)
 const lainOf = d => num(d.potongan_lain)
-const penyOf = d => num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol) - num(d.selisih_bbm) - num(d.potongan_pihak)
+const penyOf = d => num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol) + num(d.tambahan_bantuan) - num(d.selisih_bbm) - num(d.potongan_pihak)
 const legTonase = d => num(d.estimasi_muat) || num(d.muatan)
 // Whole load: the slip plus any other contract carried on it (parts).
 const tonaseOf = d => legTonase(d) + (d.parts || []).reduce((a, p) => a + legTonase(p), 0)
@@ -24,7 +24,8 @@ const detailLines = d => {
   if (num(d.potongan_pihak)) out.push([`Potongan ${d.potongan_pihak_nama || 'pihak'}`, -num(d.potongan_pihak), 'peny'])
   if (num(d.tambahan_cuci)) out.push(['Cuci tangki', num(d.tambahan_cuci), 'peny'])
   if (num(d.tambahan_steam)) out.push(['Double steam', num(d.tambahan_steam), 'peny'])
-  if (num(d.tambahan_tol)) out.push(['Bantuan uang tol', num(d.tambahan_tol), 'peny'])
+  if (num(d.tambahan_tol)) out.push(['Uang jembatan / tol', num(d.tambahan_tol), 'peny'])
+  if (num(d.tambahan_bantuan)) out.push([`Bantuan${d.tambahan_bantuan_ket ? ' — ' + d.tambahan_bantuan_ket : ''}`, num(d.tambahan_bantuan), 'peny'])
   return out
 }
 const sgn = a => (a < 0 ? '−' : '+') + ' ' + nf(Math.abs(a))
@@ -39,7 +40,8 @@ const adjLines = d => {
   if (num(d.potongan_pihak)) out.push({ label: `Potongan ${d.potongan_pihak_nama || 'pihak'}`, amt: -num(d.potongan_pihak) })
   if (num(d.tambahan_cuci)) out.push({ label: 'Cuci tangki', amt: num(d.tambahan_cuci) })
   if (num(d.tambahan_steam)) out.push({ label: 'Double steam', amt: num(d.tambahan_steam) })
-  if (num(d.tambahan_tol)) out.push({ label: 'Bantuan uang tol', amt: num(d.tambahan_tol) })
+  if (num(d.tambahan_tol)) out.push({ label: 'Uang jembatan / tol', amt: num(d.tambahan_tol) })
+  if (num(d.tambahan_bantuan)) out.push({ label: `Bantuan${d.tambahan_bantuan_ket ? ' — ' + d.tambahan_bantuan_ket : ''}`, amt: num(d.tambahan_bantuan) })
   return out
 }
 const tbNet = d => num(d.tembak_amount) - num(d.tembak_potongan)
@@ -57,7 +59,7 @@ export default function FleetReports() {
   useEffect(() => {
     if (!isConfigured) return
     setLoading(true)
-    const sel = 'id,plate,driver_name,muatan,estimasi_muat,borongan,bbm_liter,price_per_liter,bbm_rupiah,potongan_susut,potongan_ban,potongan_sparepart,potongan_pm,potongan_lain,potongan_kasbon,jenis_potongan,selisih_bbm,selisih_bbm_liter,selisih_bbm_price,potongan_pihak,potongan_pihak_nama,tambahan_cuci,tambahan_steam,tambahan_tol,is_retur,keterangan,tembak_amount,tembak_potongan,tembak_jenis_potongan,contract:fleet_contracts(control_no,origin,destination)'
+    const sel = 'id,plate,driver_name,muatan,estimasi_muat,borongan,bbm_liter,price_per_liter,bbm_rupiah,potongan_susut,potongan_ban,potongan_sparepart,potongan_pm,potongan_lain,potongan_kasbon,jenis_potongan,selisih_bbm,selisih_bbm_liter,selisih_bbm_price,potongan_pihak,potongan_pihak_nama,tambahan_cuci,tambahan_steam,tambahan_tol,tambahan_bantuan,tambahan_bantuan_ket,is_retur,keterangan,tembak_amount,tembak_potongan,tembak_jenis_potongan,contract:fleet_contracts(control_no,origin,destination)'
     Promise.all([
       supabase.from('fleet_deliveries').select(sel).eq('tanggal', date).not('borongan', 'is', null),
       supabase.from('fleet_deliveries').select(sel).eq('tembak_released_date', date),

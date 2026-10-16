@@ -12,14 +12,17 @@ const rp = n => (n === null || n === undefined || n === '') ? '' : Number(n).toL
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const potTotal = d => Number(d.potongan_susut || 0) + Number(d.potongan_ban || 0) + Number(d.potongan_sparepart || 0) + Number(d.potongan_lain || 0) + Number(d.potongan_pm || 0) + Number(d.potongan_kasbon || 0)
 const netOf = d => Number(d.borongan || 0) - Number(d.selisih_bbm || 0) - Number(d.potongan_pihak || 0) - Number(d.bbm_rupiah || 0) - potTotal(d)
-  + Number(d.tambahan_cuci || 0) + Number(d.tambahan_steam || 0) + Number(d.tambahan_tol || 0)
-const hasAdj = d => [d.selisih_bbm, d.potongan_pihak, d.tambahan_cuci, d.tambahan_steam, d.tambahan_tol].some(v => v) || d.is_retur
-const tambahanOf = d => Number(d.tambahan_cuci || 0) + Number(d.tambahan_steam || 0) + Number(d.tambahan_tol || 0)
+  + Number(d.tambahan_cuci || 0) + Number(d.tambahan_steam || 0) + Number(d.tambahan_tol || 0) + Number(d.tambahan_bantuan || 0)
+const hasAdj = d => [d.selisih_bbm, d.potongan_pihak, d.tambahan_cuci, d.tambahan_steam, d.tambahan_tol, d.tambahan_bantuan].some(v => v) || d.is_retur
+const tambahanOf = d => Number(d.tambahan_cuci || 0) + Number(d.tambahan_steam || 0) + Number(d.tambahan_tol || 0) + Number(d.tambahan_bantuan || 0)
 const potLainOf = d => Number(d.selisih_bbm || 0) + Number(d.potongan_pihak || 0)
 const penyOf = d => tambahanOf(d) - Number(d.selisih_bbm || 0) - Number(d.potongan_pihak || 0)
 const totalBbm = d => (Number(d.bbm_liter || 0) * Number(d.price_per_liter || 0))
 const isFilled = d => d.borongan != null
 const todayStr = () => new Date().toISOString().slice(0, 10)
+const PAGE = 200   // rows rendered at a time — a full year of slips is too many inputs for one page
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+const monthLabel = m => `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`
 const NUMF = ['do_no', 'borongan', 'bbm_liter', 'price_per_liter', 'bbm_rupiah', 'potongan_susut', 'potongan_ban', 'potongan_sparepart', 'potongan_lain', 'potongan_pm', 'potongan_kasbon']
 
 export default function FleetSlips() {
@@ -31,6 +34,8 @@ export default function FleetSlips() {
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState('all')
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7))   // 'YYYY-MM' or 'all'
+  const [shown, setShown] = useState(PAGE)
   const [adding, setAdding] = useState(false)
   const [printId, setPrintId] = useState(null)
   const [adjFor, setAdjFor] = useState(null)
@@ -56,16 +61,23 @@ export default function FleetSlips() {
 
   // One entry per slip; a second (third…) contract on the same load sits in d.parts.
   const slips = useMemo(() => groupTrips(rows), [rows])
+  const months = useMemo(() => {
+    const set = new Set(slips.map(d => (d.tanggal || '').slice(0, 7)).filter(Boolean))
+    set.add(new Date().toISOString().slice(0, 7))
+    return [...set].sort().reverse()
+  }, [slips])
+  // Month filter; a search looks through every month.
   const visible = useMemo(() => {
     const s = q.trim().toLowerCase()
     return slips.filter(d => {
       if (filter === 'filled' && !isFilled(d)) return false
       if (filter === 'blank' && isFilled(d)) return false
-      if (!s) return true
+      if (!s) return month === 'all' || (d.tanggal || '').startsWith(month)
       const ctl = [d, ...d.parts].map(x => `${x.contract?.control_no} ${x.contract?.client}`).join(' ')
       return `${d.plate} ${d.driver_name} ${ctl}`.toLowerCase().includes(s)
     })
-  }, [slips, q, filter])
+  }, [slips, q, filter, month])
+  useEffect(() => { setShown(PAGE) }, [q, filter, month])
   const total = useMemo(() => visible.reduce((a, d) => a + netOf(d), 0), [visible])
 
   // locked = there is a password, the slip's date is before today, and not unlocked this session
@@ -191,14 +203,18 @@ export default function FleetSlips() {
         {adding && <NewSlip contracts={contracts} trucks={trucks} drivers={drivers} onCreate={createSlip} onCancel={() => setAdding(false)} />}
 
         <div className="controls" style={{ marginTop: adding ? 20 : 0 }}>
-          <div className="field grow"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by plate, driver, control no, client…" /></div>
+          <div className="field grow"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by plate, driver, control no, client… (all months)" /></div>
+          <select value={month} onChange={e => setMonth(e.target.value)} style={{ width: 'auto' }} disabled={!!q.trim()} title={q.trim() ? 'Search looks through all months' : ''}>
+            <option value="all">All months</option>
+            {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
+          </select>
           <div className="seg-lens">
             {[['all', 'All'], ['blank', 'Not filled'], ['filled', 'Filled']].map(([v, l]) => (<button key={v} className={filter === v ? 'on' : ''} onClick={() => setFilter(v)}>{l}</button>))}
           </div>
         </div>
 
         {visible.length === 0 ? (
-          <Empty title="No slips">{q ? 'No matches.' : 'Create a slip with “+ New slip”, or add a delivery in a contract.'}</Empty>
+          <Empty title="No slips">{q ? 'No matches.' : month !== 'all' ? `No slips in ${monthLabel(month)} — pick another month above.` : 'Create a slip with “+ New slip”, or add a delivery in a contract.'}</Empty>
         ) : (
           <>
             <div className="hist-count">{visible.length} slip{visible.length === 1 ? '' : 's'} · total net Rp {total.toLocaleString()}</div>
@@ -213,7 +229,7 @@ export default function FleetSlips() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map(d => {
+                  {visible.slice(0, shown).map(d => {
                     const locked = isLocked(d)
                     const partCtl = d.parts.map(p => p.contract?.control_no || '—').join(', ')
                     return (
@@ -243,7 +259,7 @@ export default function FleetSlips() {
                         <td><NumInput disabled={locked} value={d.potongan_lain} onChange={n => setCell(d.id, 'potongan_lain', n)} onCommit={n => saveField(d.id, 'potongan_lain', n)} /></td>
                         <td><NumInput disabled={locked} value={d.potongan_pm} onChange={n => setCell(d.id, 'potongan_pm', n)} onCommit={n => saveField(d.id, 'potongan_pm', n)} /></td>
                         <td><NumInput disabled={locked} value={d.potongan_kasbon} onChange={n => setCell(d.id, 'potongan_kasbon', n)} onCommit={n => saveField(d.id, 'potongan_kasbon', n)} /></td>
-                        <td className="mono ro r" title="Tambahan − Selisih BBM − ANS/MNA (set in Adj)">{penyOf(d) ? rp(penyOf(d)) : '—'}</td>
+                        <td className="mono ro r" title="Tambahan (cuci, steam, jembatan/tol, bantuan) − Selisih BBM − ANS/MNA (set in Adj)">{penyOf(d) ? rp(penyOf(d)) : '—'}</td>
                         <td className="mono ro r" style={{ fontWeight: 700 }}>{isFilled(d) ? rp(netOf(d)) : '—'}</td>
                         <td><input disabled={locked} value={d.keterangan || ''} onChange={e => setCell(d.id, 'keterangan', e.target.value)} onBlur={e => saveField(d.id, 'keterangan', e.target.value)} /></td>
                       </tr>
@@ -265,6 +281,11 @@ export default function FleetSlips() {
                 </tbody>
               </table>
             </div>
+            {visible.length > shown && (
+              <button className="btn ghost" style={{ marginTop: 10 }} onClick={() => setShown(n => n + PAGE)}>
+                Show {Math.min(PAGE, visible.length - shown)} more ({visible.length - shown} not shown)
+              </button>
+            )}
           </>
         )}
       </div>
@@ -297,20 +318,21 @@ function AdjustModal({ d, onSave, onClose }) {
     selisih_liter: d.selisih_bbm_liter ?? '', selisih_price: d.selisih_bbm_price ?? '',
     potongan_pihak: d.potongan_pihak ?? '', potongan_pihak_nama: d.potongan_pihak_nama || '',
     tambahan_cuci: d.tambahan_cuci ?? '', tambahan_steam: d.tambahan_steam ?? '', tambahan_tol: d.tambahan_tol ?? '',
+    tambahan_bantuan: d.tambahan_bantuan ?? '', tambahan_bantuan_ket: d.tambahan_bantuan_ket || '',
     is_retur: !!d.is_retur,
   })
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
   const nz = v => (v === '' || v === null || v === undefined) ? 0 : Number(v)
   const orNull = v => (v === '' || v === null || v === undefined) ? null : Number(v)
   const selisih = nz(f.selisih_liter) * nz(f.selisih_price)
-  const preview = Number(d.borongan || 0) - selisih - nz(f.potongan_pihak)
-    - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0)
-    + nz(f.tambahan_cuci) + nz(f.tambahan_steam) + nz(f.tambahan_tol)
+  const preview = Number(d.borongan || 0) - selisih - nz(f.potongan_pihak) - Number(d.bbm_rupiah || 0) - potTotal(d)
+    + nz(f.tambahan_cuci) + nz(f.tambahan_steam) + nz(f.tambahan_tol) + nz(f.tambahan_bantuan)
   function save() {
     onSave({
       selisih_bbm_liter: orNull(f.selisih_liter), selisih_bbm_price: orNull(f.selisih_price), selisih_bbm: selisih || null,
       potongan_pihak: orNull(f.potongan_pihak), potongan_pihak_nama: f.potongan_pihak_nama.trim() || null,
       tambahan_cuci: orNull(f.tambahan_cuci), tambahan_steam: orNull(f.tambahan_steam), tambahan_tol: orNull(f.tambahan_tol),
+      tambahan_bantuan: orNull(f.tambahan_bantuan), tambahan_bantuan_ket: f.tambahan_bantuan_ket.trim() || null,
       is_retur: f.is_retur,
     })
   }
@@ -331,7 +353,9 @@ function AdjustModal({ d, onSave, onClose }) {
         <div className="nsf-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
           <label><span>Cuci tangki</span><NumInput value={f.tambahan_cuci} onChange={v => set('tambahan_cuci', v)} onCommit={v => set('tambahan_cuci', v)} /></label>
           <label><span>Double steam</span><NumInput value={f.tambahan_steam} onChange={v => set('tambahan_steam', v)} onCommit={v => set('tambahan_steam', v)} /></label>
-          <label><span>Bantuan uang tol</span><NumInput value={f.tambahan_tol} onChange={v => set('tambahan_tol', v)} onCommit={v => set('tambahan_tol', v)} /></label>
+          <label><span>Uang jembatan / tol</span><NumInput value={f.tambahan_tol} onChange={v => set('tambahan_tol', v)} onCommit={v => set('tambahan_tol', v)} /></label>
+          <label><span>Bantuan</span><NumInput value={f.tambahan_bantuan} onChange={v => set('tambahan_bantuan', v)} onCommit={v => set('tambahan_bantuan', v)} /></label>
+          <label style={{ gridColumn: 'span 2' }}><span>Keterangan bantuan</span><input value={f.tambahan_bantuan_ket} onChange={e => set('tambahan_bantuan_ket', e.target.value)} placeholder="mis. Bantuan tol" /></label>
         </div>
         <label className="adj-retur"><input type="checkbox" checked={f.is_retur} onChange={e => set('is_retur', e.target.checked)} /> Slip untuk retur</label>
         <div style={{ display: 'flex', alignItems: 'center', marginTop: 14 }}>
@@ -391,7 +415,7 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
     contract_id: '', truck_id: '', driver_name: '', tanggal: new Date().toISOString().slice(0, 10),
     borongan: '', bbm_liter: '', price_per_liter: '', potongan_susut: '', potongan_ban: '', potongan_sparepart: '', potongan_lain: '', potongan_pm: '40000', potongan_kasbon: '',
     selisih_liter: '', selisih_price: '', potongan_pihak: '', potongan_pihak_nama: '',
-    tambahan_cuci: '', tambahan_steam: '', tambahan_tol: '', is_retur: false, keterangan: '',
+    tambahan_cuci: '', tambahan_steam: '', tambahan_tol: '', tambahan_bantuan: '', tambahan_bantuan_ket: '', is_retur: false, keterangan: '',
     contract2_id: '', est2: '',
   })
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
@@ -430,7 +454,7 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   const selisih = nz(f.selisih_liter) * nz(f.selisih_price)
   const potTot = nz(f.potongan_susut) + nz(f.potongan_ban) + nz(f.potongan_sparepart) + nz(f.potongan_lain) + nz(f.potongan_pm) + nz(f.potongan_kasbon)
   const sisa = nz(f.borongan) - selisih - nz(f.potongan_pihak) - totalBbm - potTot
-    + nz(f.tambahan_cuci) + nz(f.tambahan_steam) + nz(f.tambahan_tol)
+    + nz(f.tambahan_cuci) + nz(f.tambahan_steam) + nz(f.tambahan_tol) + nz(f.tambahan_bantuan)
 
   // Two contracts on one load: the second takes its estimate out of the truck's capacity.
   const k2 = showK2 && f.contract2_id ? f.contract2_id : ''
@@ -451,6 +475,7 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
       selisih_bbm_liter: orNull(f.selisih_liter), selisih_bbm_price: orNull(f.selisih_price), selisih_bbm: selisih || null,
       potongan_pihak: orNull(f.potongan_pihak), potongan_pihak_nama: f.potongan_pihak_nama || null,
       tambahan_cuci: orNull(f.tambahan_cuci), tambahan_steam: orNull(f.tambahan_steam), tambahan_tol: orNull(f.tambahan_tol),
+      tambahan_bantuan: orNull(f.tambahan_bantuan), tambahan_bantuan_ket: f.tambahan_bantuan_ket.trim() || null,
       is_retur: f.is_retur, keterangan: f.keterangan.trim() || null,
     }, k2 ? { contract_id: k2, estimasi_muat: orNull(f.est2) } : null)
   }
@@ -485,7 +510,7 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
         </div></div>
       )}
 
-      <button type="button" className="btn ghost nsf-toggle" onClick={() => setShowAdj(v => !v)}>{showAdj ? '\u25be Sembunyikan' : '\u25b8 Tampilkan'} Penyesuaian — Selisih BBM, Potongan ANS/MNA, Cuci, Steam, Tol, Retur</button>
+      <button type="button" className="btn ghost nsf-toggle" onClick={() => setShowAdj(v => !v)}>{showAdj ? '\u25be Sembunyikan' : '\u25b8 Tampilkan'} Penyesuaian — Selisih BBM, Potongan ANS/MNA, Cuci, Steam, Jembatan/Tol, Bantuan, Retur</button>
       {showAdj && (
         <div className="nsf-adj"><div className="nsf-grid">
           <label><span>Selisih BBM Liter</span><NumInput value={f.selisih_liter} onChange={v => set('selisih_liter', v)} onCommit={v => set('selisih_liter', v)} /></label>
@@ -494,7 +519,9 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
           <label><span>Dari pihak</span><select value={f.potongan_pihak_nama} onChange={e => set('potongan_pihak_nama', e.target.value)}><option value="">—</option><option value="ANS">ANS</option><option value="MNA">MNA</option><option value="Lainnya">Lainnya</option></select></label>
           <label><span>Cuci tangki</span><NumInput value={f.tambahan_cuci} onChange={v => set('tambahan_cuci', v)} onCommit={v => set('tambahan_cuci', v)} /></label>
           <label><span>Double steam</span><NumInput value={f.tambahan_steam} onChange={v => set('tambahan_steam', v)} onCommit={v => set('tambahan_steam', v)} /></label>
-          <label><span>Bantuan uang tol</span><NumInput value={f.tambahan_tol} onChange={v => set('tambahan_tol', v)} onCommit={v => set('tambahan_tol', v)} /></label>
+          <label><span>Uang jembatan / tol</span><NumInput value={f.tambahan_tol} onChange={v => set('tambahan_tol', v)} onCommit={v => set('tambahan_tol', v)} /></label>
+          <label><span>Bantuan</span><NumInput value={f.tambahan_bantuan} onChange={v => set('tambahan_bantuan', v)} onCommit={v => set('tambahan_bantuan', v)} /></label>
+          <label><span>Keterangan bantuan</span><input value={f.tambahan_bantuan_ket} onChange={e => set('tambahan_bantuan_ket', e.target.value)} placeholder="mis. Bantuan tol" /></label>
           <label className="adj-retur" style={{ gridColumn: '1 / -1', marginTop: 0 }}><input type="checkbox" checked={f.is_retur} onChange={e => set('is_retur', e.target.checked)} /> Slip untuk retur</label>
         </div></div>
       )}
@@ -548,7 +575,8 @@ function SlipPrintH({ d, c, onClose }) {
               {d.potongan_pihak ? <tr><td>Potongan {d.potongan_pihak_nama || 'pihak'}</td><td className="r">− {rp(d.potongan_pihak)}</td></tr> : null}
               {d.tambahan_cuci ? <tr><td>Tambahan Cuci Tangki</td><td className="r">+ {rp(d.tambahan_cuci)}</td></tr> : null}
               {d.tambahan_steam ? <tr><td>Tambahan Double Steam</td><td className="r">+ {rp(d.tambahan_steam)}</td></tr> : null}
-              {d.tambahan_tol ? <tr><td>Tambahan Bantuan Uang Tol</td><td className="r">+ {rp(d.tambahan_tol)}</td></tr> : null}
+              {d.tambahan_tol ? <tr><td>Tambahan Uang Jembatan / Tol</td><td className="r">+ {rp(d.tambahan_tol)}</td></tr> : null}
+              {d.tambahan_bantuan ? <tr><td>Tambahan Bantuan{d.tambahan_bantuan_ket ? ` — ${d.tambahan_bantuan_ket}` : ''}</td><td className="r">+ {rp(d.tambahan_bantuan)}</td></tr> : null}
             </tbody>
           </table>
         )}
