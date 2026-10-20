@@ -16,7 +16,7 @@ export default function FleetTembak() {
     if (!isConfigured) { setLoading(false); return }
     // One uang tembak per trip: contract parts (parent_id) fold into their slip.
     fetchAll(() => supabase.from('fleet_deliveries').select('id,parent_id,driver_name,muatan,bongkar,tembak_released')
-      .not('driver_name', 'is', null))
+      .not('driver_name', 'is', null).eq('is_retur', false))   // retur: no trip, no uang tembak
       .then(({ data }) => { setRows(groupTrips(data || [])); setLoading(false) })
   }, [])
 

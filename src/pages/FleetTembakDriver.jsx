@@ -43,8 +43,8 @@ export default function FleetTembakDriver() {
     setLoading(true)
     const [dl, rl] = await Promise.all([
       supabase.from('fleet_deliveries')
-        .select('id,parent_id,do_no,tanggal,plate,driver_name,muatan,bongkar,tembak_amount,tembak_potongan,tembak_jenis_potongan,tembak_released,tembak_released_date,tembak_release_id,contract:fleet_contracts(control_no,origin,destination,susut_tolerance)')
-        .eq('driver_name', driver).order('tanggal', { ascending: false, nullsFirst: false }),
+        .select('id,parent_id,do_no,tanggal,plate,driver_name,muatan,bongkar,tembak_amount,tembak_potongan,tembak_jenis_potongan,tembak_released,tembak_released_date,tembak_release_id,rute,contract:fleet_contracts(control_no,origin,destination,susut_tolerance)')
+        .eq('driver_name', driver).eq('is_retur', false).order('tanggal', { ascending: false, nullsFirst: false }),
       supabase.from('tembak_releases').select('*').eq('driver_name', driver).order('release_no', { ascending: false }),
     ])
     // One uang tembak per trip: contract parts (parent_id) fold into their slip.

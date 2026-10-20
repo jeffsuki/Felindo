@@ -693,3 +693,35 @@ textarea { resize: vertical; min-height: 72px; }
   .mech-col + .mech-col { border-left: none; border-top: 1px solid var(--line-2); }
   .row2 { grid-template-columns: 1fr; }
 }
+
+/* Retur: the trip did not happen, the uang jalan came back (0039) */
+.retur-chip { display: inline-block; font-size: 11px; font-weight: 600; color: var(--warn); background: var(--warn-wash); border-radius: 10px; padding: 2px 8px; margin: 0 4px; white-space: nowrap; }
+tr.row-retur td { background: #FBF6EE; }
+.lb-retur { font-weight: 600; color: var(--warn); }
+.kas-in { color: var(--ok); }
+.kas-tbl td.r, .kas-tbl th.r { text-align: right; }
+.kas-day { cursor: pointer; }
+.kas-day:hover td { background: var(--accent-wash); }
+.kas-detail td { font-size: 12px; color: #4A5560; background: #FAFBFC; }
+
+/* Slips without a contract yet: route typed on the uang jalan (0039) */
+select.no-contract { color: var(--warn); font-style: italic; }
+input.rute-in { font-style: italic; color: var(--warn); min-width: 180px; }
+input.rute-in::placeholder { color: var(--warn); opacity: .7; }
+
+/* Cek Laporan (sementara): app data laid out like the Excel laporan borongan harian */
+.ck-temp { display: inline-block; vertical-align: middle; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--warn); background: var(--warn-wash); border-radius: 10px; padding: 2px 8px; margin-left: 6px; }
+.ck-ov tr.ck-on td { background: var(--accent-wash); font-weight: 600; }
+.ck-ov td.muted { color: var(--muted); }
+.ck-note { font-size: 12px; color: var(--muted); margin-top: 8px; max-width: 900px; }
+.ck-tbl tr.ck-sub td { font-size: 12px; color: #4A5560; background: #FAFBFC; }
+.ck-tbl tr.ck-sub td:nth-child(3) { padding-left: 18px; font-style: italic; }
+.ck-tbl tr.ck-tembak td { background: #F6F9FC; }
+
+/* Perlu dicek: a slip that differs from the laporan borongan, for staff to review (0039 cek_note) */
+.cek-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 12px 0 4px; padding: 9px 12px; border-radius: 6px; background: var(--warn-wash); color: #7A4A0E; font-size: 13px; }
+tr.row-cek td { background: #FDF6EA; }
+tr.slip-cek td { background: #FDF1E2; color: #7A4A0E; font-size: 12.5px; padding-top: 4px; padding-bottom: 6px; }
+tr.slip-cek .cek-note { position: sticky; left: 8px; display: flex; gap: 10px; align-items: center; max-width: min(1080px, calc(100vw - 340px)); white-space: normal; line-height: 1.4; }
+tr.slip-cek .cek-note .btn { flex: none; }
+.ck-cek { color: var(--warn); font-weight: 600; white-space: nowrap; }

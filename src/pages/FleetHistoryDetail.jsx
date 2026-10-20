@@ -28,8 +28,8 @@ export default function FleetHistoryDetail() {
     setLoading(true)
     const col = isTruck ? 'plate' : 'driver_name'
     fetchAll(() => supabase.from('fleet_deliveries')
-      .select('id,parent_id,tanggal,tanggal_bongkar,plate,driver_name,muatan,bongkar,contract:fleet_contracts(control_no,origin,destination,distance_km)')
-      .eq(col, who))
+      .select('id,parent_id,tanggal,tanggal_bongkar,plate,driver_name,muatan,bongkar,rute,contract:fleet_contracts(control_no,origin,destination,distance_km)')
+      .eq(col, who).eq('is_retur', false))
       .then(({ data }) => {
         // One row per trip (contract parts fold into their slip).
         // Trip date = slip date, or the unload date for historical trips that have no slip.

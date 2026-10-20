@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, Fragment } from 'react'
+import { useEffect, useState, useMemo, useRef, Fragment } from 'react'
 import { supabase, isConfigured, fetchAll } from '../supabaseClient'
 import { Spinner, Empty, useToast } from '../components/ui'
 import SearchSelect from '../components/SearchSelect'
@@ -13,16 +13,24 @@ const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(unde
 const potTotal = d => Number(d.potongan_susut || 0) + Number(d.potongan_ban || 0) + Number(d.potongan_sparepart || 0) + Number(d.potongan_lain || 0) + Number(d.potongan_pm || 0) + Number(d.potongan_kasbon || 0)
 const netOf = d => Number(d.borongan || 0) - Number(d.selisih_bbm || 0) - Number(d.potongan_pihak || 0) - Number(d.bbm_rupiah || 0) - potTotal(d)
   + Number(d.tambahan_cuci || 0) + Number(d.tambahan_steam || 0) + Number(d.tambahan_tol || 0) + Number(d.tambahan_bantuan || 0)
-const hasAdj = d => [d.selisih_bbm, d.potongan_pihak, d.tambahan_cuci, d.tambahan_steam, d.tambahan_tol, d.tambahan_bantuan].some(v => v) || d.is_retur
+const hasAdj = d => [d.selisih_bbm, d.potongan_pihak, d.tambahan_cuci, d.tambahan_steam, d.tambahan_tol, d.tambahan_bantuan].some(v => v)
 const tambahanOf = d => Number(d.tambahan_cuci || 0) + Number(d.tambahan_steam || 0) + Number(d.tambahan_tol || 0) + Number(d.tambahan_bantuan || 0)
 const potLainOf = d => Number(d.selisih_bbm || 0) + Number(d.potongan_pihak || 0)
 const penyOf = d => tambahanOf(d) - Number(d.selisih_bbm || 0) - Number(d.potongan_pihak || 0)
 const totalBbm = d => (Number(d.bbm_liter || 0) * Number(d.price_per_liter || 0))
 const isFilled = d => d.borongan != null
 const todayStr = () => new Date().toISOString().slice(0, 10)
-const PAGE = 200   // rows rendered at a time — a full year of slips is too many inputs for one page
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+const localToday = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}` }
+// Retur: the trip did not happen and the driver brings the uang jalan back. Only a slip without a load (and no second contract).
+const canRetur = d => !d.is_retur && d.borongan != null && d.muatan == null && d.bongkar == null && !(d.parts || []).length
+const PAGE = 200   // rows rendered at a time — a month can still have a few hundred slips
+const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 const monthLabel = m => `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`
+const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }   // local time, not UTC
+// 'YYYY-MM' + n months
+const addMonths = (m, n) => { const t = Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)) - 1 + n; return `${Math.floor(t / 12)}-${String(t % 12 + 1).padStart(2, '0')}` }
+const SEL = '*, contract:fleet_contracts(control_no,client,origin,destination)'
+const SEARCH_LIMIT = 150   // a search shows the latest matches across all months
 const NUMF = ['do_no', 'borongan', 'bbm_liter', 'price_per_liter', 'bbm_rupiah', 'potongan_susut', 'potongan_ban', 'potongan_sparepart', 'potongan_lain', 'potongan_pm', 'potongan_kasbon']
 
 export default function FleetSlips() {
@@ -31,10 +39,13 @@ export default function FleetSlips() {
   const [contracts, setContracts] = useState([])
   const [trucks, setTrucks] = useState([])
   const [drivers, setDrivers] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(true)   // first load of the page
+  const [busy, setBusy] = useState(false)        // loading another month / a search
   const [q, setQ] = useState('')
+  const [sq, setSq] = useState('')               // the search text, a moment after typing stops
   const [filter, setFilter] = useState('all')
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7))   // 'YYYY-MM' or 'all'
+  const [month, setMonth] = useState(thisMonth)  // 'YYYY-MM' — only this month's slips are loaded
+  const [bounds, setBounds] = useState(null)     // first and last month that have slips
   const [shown, setShown] = useState(PAGE)
   const [adding, setAdding] = useState(false)
   const [printId, setPrintId] = useState(null)
@@ -42,42 +53,91 @@ export default function FleetSlips() {
   const [unlocked, setUnlocked] = useState(new Set())
   const [unlockFor, setUnlockFor] = useState(null)
   const [partFor, setPartFor] = useState(null)
+  const [flagCount, setFlagCount] = useState(0)    // slips marked "perlu dicek" (all months)
+  const [flagged, setFlagged] = useState(false)    // showing only those, across all months
 
-  async function load() {
-    if (!isConfigured) { setLoading(false); return }
-    setLoading(true)
-    const [dl, ct, tr, dr] = await Promise.all([
-      // Only real slips: historical trips imported from RINCI have no slip date and stay out of this page.
-      // Contract parts (parent_id set) come along and are shown under their slip.
-      fetchAll(() => supabase.from('fleet_deliveries').select('*, contract:fleet_contracts(control_no,client,origin,destination)').not('tanggal', 'is', null).order('tanggal', { ascending: false })),
+  // Contracts, trucks, drivers and the range of months: loaded once.
+  async function loadRefs() {
+    const [ct, tr, dr, lo, hi, fl] = await Promise.all([
       supabase.from('fleet_contracts').select('id,control_no,client,origin,destination').order('control_no'),
       supabase.from('trucks').select('id,plate,capacity_kg,status').eq('status', 'Active').order('plate'),
       supabase.from('drivers').select('name,nickname,status').eq('status', 'Active').order('name'),
+      supabase.from('fleet_deliveries').select('tanggal').not('tanggal', 'is', null).order('tanggal', { ascending: true }).limit(1),
+      supabase.from('fleet_deliveries').select('tanggal').not('tanggal', 'is', null).order('tanggal', { ascending: false }).limit(1),
+      supabase.from('fleet_deliveries').select('id', { count: 'exact', head: true }).not('cek_note', 'is', null),
     ])
-    setRows(dl.data || []); setContracts(ct.data || []); setTrucks(tr.data || []); setDrivers(dr.data || [])
-    setLoading(false)
+    setFlagCount(fl.count || 0)
+    setContracts(ct.data || []); setTrucks(tr.data || []); setDrivers(dr.data || [])
+    const now = thisMonth(), first = lo.data?.[0]?.tanggal?.slice(0, 7) || now, last = hi.data?.[0]?.tanggal?.slice(0, 7) || now
+    setBounds({ first: first < now ? first : now, last: last > now ? last : now })
   }
-  useEffect(() => { load() }, [])
+  // Only the slips of one month — or, while searching, the latest matches across all months.
+  // Historical trips imported from RINCI have no slip date and stay out of this page.
+  // Contract parts (parent_id set) share their slip's date, so they come along and show under it.
+  const reqNo = useRef(0)
+  async function loadRows() {
+    const n = ++reqNo.current
+    setBusy(true)
+    const { data, error } = sq ? await searchRows(sq) : flagged ? await flaggedRows() : await fetchAll(() => supabase.from('fleet_deliveries').select(SEL)
+      .gte('tanggal', `${month}-01`).lt('tanggal', `${addMonths(month, 1)}-01`).order('tanggal', { ascending: false }))
+    if (n !== reqNo.current) return   // a newer month / search was asked for meanwhile
+    if (error) show(error.message, true)
+    setRows(data || []); setBusy(false); setLoading(false)
+  }
+  // Search by plate / driver / route of a slip without contract, or by contract no. / client (of the slip or a second contract on it).
+  async function searchRows(s) {
+    const pat = s.replace(/[,()*%\\:"']/g, ' ').trim().replace(/\s+/g, '*')
+    if (!pat) return { data: [] }
+    const [a, b] = await Promise.all([
+      supabase.from('fleet_deliveries').select('id,parent_id,tanggal').not('tanggal', 'is', null)
+        .or(`plate.ilike.*${pat}*,driver_name.ilike.*${pat}*,rute.ilike.*${pat}*`).order('tanggal', { ascending: false }).limit(SEARCH_LIMIT),
+      supabase.from('fleet_deliveries').select('id,parent_id,tanggal,contract:fleet_contracts!inner(control_no,client)').not('tanggal', 'is', null)
+        .or(`control_no.ilike.*${pat}*,client.ilike.*${pat}*`, { referencedTable: 'contract' }).order('tanggal', { ascending: false }).limit(SEARCH_LIMIT),
+    ])
+    if (a.error || b.error) return { data: [], error: a.error || b.error }
+    const hits = [...a.data, ...b.data].sort((x, y) => String(y.tanggal).localeCompare(String(x.tanggal)))
+    return withParts([...new Set(hits.map(h => h.parent_id || h.id))].slice(0, SEARCH_LIMIT))
+  }
+  // Slips marked "perlu dicek", whatever their month.
+  async function flaggedRows() {
+    const { data, error } = await supabase.from('fleet_deliveries').select('id').not('cek_note', 'is', null).limit(500)
+    if (error) return { data: [], error }
+    return withParts(data.map(h => h.id))
+  }
+  // the slips with these ids and every contract part under them
+  async function withParts(ids) {
+    const out = []
+    for (let i = 0; i < ids.length; i += 50) {   // the slips and every contract part under them
+      const chunk = ids.slice(i, i + 50).join(',')
+      const { data, error } = await supabase.from('fleet_deliveries').select(SEL).or(`id.in.(${chunk}),parent_id.in.(${chunk})`)
+      if (error) return { data: out, error }
+      out.push(...data)
+    }
+    return { data: out.sort((x, y) => String(y.tanggal).localeCompare(String(x.tanggal))) }
+  }
+  const load = () => loadRows()
+  // After creating a slip: show the month it belongs to (and reload).
+  function showMonthOf(tanggal) {
+    const m = (tanggal || '').slice(0, 7)
+    if (!m || sq || m === month) return load()
+    setBounds(b => b && { first: m < b.first ? m : b.first, last: m > b.last ? m : b.last })
+    setMonth(m)
+  }
+  useEffect(() => { if (isConfigured) loadRefs() }, [])
+  useEffect(() => { if (isConfigured) loadRows(); else setLoading(false) }, [month, sq, flagged])
+  useEffect(() => { const t = setTimeout(() => setSq(q.trim().length >= 2 ? q.trim() : ''), 350); return () => clearTimeout(t) }, [q])
 
   // One entry per slip; a second (third…) contract on the same load sits in d.parts.
   const slips = useMemo(() => groupTrips(rows), [rows])
-  const months = useMemo(() => {
-    const set = new Set(slips.map(d => (d.tanggal || '').slice(0, 7)).filter(Boolean))
-    set.add(new Date().toISOString().slice(0, 7))
-    return [...set].sort().reverse()
-  }, [slips])
-  // Month filter; a search looks through every month.
-  const visible = useMemo(() => {
-    const s = q.trim().toLowerCase()
-    return slips.filter(d => {
-      if (filter === 'filled' && !isFilled(d)) return false
-      if (filter === 'blank' && isFilled(d)) return false
-      if (!s) return month === 'all' || (d.tanggal || '').startsWith(month)
-      const ctl = [d, ...d.parts].map(x => `${x.contract?.control_no} ${x.contract?.client}`).join(' ')
-      return `${d.plate} ${d.driver_name} ${ctl}`.toLowerCase().includes(s)
-    })
-  }, [slips, q, filter, month])
-  useEffect(() => { setShown(PAGE) }, [q, filter, month])
+  // years that have slips (and this year), newest first
+  const years = useMemo(() => {
+    const y = Number(month.slice(0, 4)), lo = Math.min(Number((bounds?.first || month).slice(0, 4)), y), hi = Math.max(Number((bounds?.last || month).slice(0, 4)), y)
+    const out = []; for (let k = hi; k >= lo; k--) out.push(k)
+    return out
+  }, [bounds, month])
+  const visible = useMemo(() => slips.filter(d => filter === 'all' || (filter === 'nocontract' ? !d.contract_id : (filter === 'filled') === isFilled(d))), [slips, filter])
+  const noContract = useMemo(() => slips.filter(d => !d.contract_id).length, [slips])
+  useEffect(() => { setShown(PAGE) }, [sq, filter, month, flagged])
   const total = useMemo(() => visible.reduce((a, d) => a + netOf(d), 0), [visible])
 
   // locked = there is a password, the slip's date is before today, and not unlocked this session
@@ -110,13 +170,49 @@ export default function FleetSlips() {
     if (error) show(error.message, true)
   }
   // Moving a slip (or a part) to another contract gives it the next DO number there.
+  // Taking the contract off a slip (no contract yet) drops its DO number and keeps the route as text.
   async function saveContractLink(did, cid) {
     const c = contracts.find(x => x.id === cid)
+    const row = rows.find(r => r.id === did)
     try {
-      const doNo = await nextDo(cid)
+      if (!cid) {
+        const patch = { contract_id: null, do_no: null, rute: row?.rute || (row?.contract ? `${row.contract.origin || '—'} - ${row.contract.destination || '—'}` : null) }
+        const { error } = await supabase.from('fleet_deliveries').update(patch).eq('id', did)
+        if (error) throw error
+        return setRows(rs => rs.map(r => r.id === did ? { ...r, ...patch, contract: null } : r))
+      }
+      const doNo = row?.is_retur ? null : await nextDo(cid)   // a retur slip has no DO number
       const { error } = await supabase.from('fleet_deliveries').update({ contract_id: cid, do_no: doNo }).eq('id', did)
       if (error) throw error
       setRows(rs => rs.map(r => r.id === did ? { ...r, contract_id: cid, do_no: doNo, contract: c ? { control_no: c.control_no, origin: c.origin, destination: c.destination, client: c.client } : r.contract } : r))
+    } catch (e) { show(e.message, true) }
+  }
+  // Retur: the whole sisa comes back today; the slip leaves the daftar kontrol (no DO number) but stays on the
+  // laporan borongan harian, and the Laporan Kas shows the money coming back on the retur date.
+  async function saveRetur(d) {
+    const amt = netOf(d), today = localToday()
+    const msg = d.is_retur
+      ? `Uang retur Rp ${amt.toLocaleString('id-ID')} sudah kembali hari ini (${fmtDate(today)})?`
+      : `Retur: uang jalan Rp ${amt.toLocaleString('id-ID')} dikembalikan hari ini (${fmtDate(today)})?\n\nSlip tetap di laporan borongan, tapi keluar dari daftar kontrol ${d.contract?.control_no || ''}${d.do_no != null ? ` (DO ${d.do_no} dihapus)` : ''}.`
+    if (!confirm(msg)) return
+    const patch = { is_retur: true, retur_date: today, retur_amount: amt, do_no: null }
+    const { error } = await supabase.from('fleet_deliveries').update(patch).eq('id', d.id)
+    if (error) return show(error.message, true)
+    setRows(rs => rs.map(r => r.id === d.id ? { ...r, ...patch } : r)); show('Retur dicatat.')
+  }
+  // "Perlu dicek": staff looked at the slip (and fixed it if needed).
+  async function clearCek(d) {
+    const { error } = await supabase.from('fleet_deliveries').update({ cek_note: null }).eq('id', d.id)
+    if (error) return show(error.message, true)
+    setRows(rs => rs.map(r => r.id === d.id ? { ...r, cek_note: null } : r)); setFlagCount(n => Math.max(n - 1, 0)); show('Ditandai sudah dicek.')
+  }
+  async function cancelRetur(d) {
+    if (!confirm('Batalkan retur? Slip kembali ke daftar kontrol dengan DO baru, dan uang retur hilang dari Laporan Kas.')) return
+    try {
+      const patch = { is_retur: false, retur_date: null, retur_amount: null, do_no: await nextDo(d.contract_id) }
+      const { error } = await supabase.from('fleet_deliveries').update(patch).eq('id', d.id)
+      if (error) throw error
+      setRows(rs => rs.map(r => r.id === d.id ? { ...r, ...patch } : r)); show('Retur dibatalkan.')
     } catch (e) { show(e.message, true) }
   }
   // Removing a slip also removes its contract parts (on delete cascade).
@@ -140,6 +236,7 @@ export default function FleetSlips() {
   // Next DO number within a contract, read from the database so rows not on this
   // page (historical trips without a slip date, other slips' parts) are counted.
   async function nextDo(contractId) {
+    if (!contractId) return null   // no contract yet: no DO number
     const { data, error } = await supabase.from('fleet_deliveries').select('do_no')
       .eq('contract_id', contractId).not('do_no', 'is', null).order('do_no', { ascending: false }).limit(1)
     if (error) throw error
@@ -152,7 +249,7 @@ export default function FleetSlips() {
   async function createSlip(fields, second) {
     let main
     try {
-      const { data, error } = await supabase.from('fleet_deliveries').insert({ do_no: await nextDo(fields.contract_id), ...fields }).select('*').single()
+      const { data, error } = await supabase.from('fleet_deliveries').insert({ do_no: await nextDo(fields.contract_id), ...fields }).select('*').single()   // no contract: no DO yet
       if (error) throw error
       main = data
     } catch (e) { return show(e.message, true) }
@@ -162,7 +259,7 @@ export default function FleetSlips() {
         if (error) throw error
       } catch (e) { show('Slip created, but the second contract was not added: ' + e.message, true); setAdding(false); load(); return }
     }
-    show(second ? 'Slip created with two contracts.' : 'Slip created.'); setAdding(false); load()
+    show(second ? 'Slip created with two contracts.' : 'Slip created.'); setAdding(false); showMonthOf(main.tanggal)
   }
   // Add another contract to an existing slip (same truck load).
   async function addPart(main, { contract_id, est_main, est_part }) {
@@ -204,20 +301,36 @@ export default function FleetSlips() {
 
         <div className="controls" style={{ marginTop: adding ? 20 : 0 }}>
           <div className="field grow"><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by plate, driver, control no, client… (all months)" /></div>
-          <select value={month} onChange={e => setMonth(e.target.value)} style={{ width: 'auto' }} disabled={!!q.trim()} title={q.trim() ? 'Search looks through all months' : ''}>
-            <option value="all">All months</option>
-            {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
-          </select>
+          <div className="btn-group" title={sq ? 'Search looks through all months' : 'Only this month is loaded'}>
+            <button className="btn ghost sm" disabled={!!sq || flagged} title="Bulan sebelumnya" onClick={() => setMonth(m => addMonths(m, -1))}>‹</button>
+            <select value={month.slice(5, 7)} onChange={e => setMonth(`${month.slice(0, 4)}-${e.target.value}`)} style={{ width: 'auto' }} disabled={!!sq || flagged} aria-label="Bulan">
+              {MONTHS.map((l, i) => <option key={l} value={String(i + 1).padStart(2, '0')}>{l}</option>)}
+            </select>
+            <select value={month.slice(0, 4)} onChange={e => setMonth(`${e.target.value}-${month.slice(5, 7)}`)} style={{ width: 'auto' }} disabled={!!sq || flagged} aria-label="Tahun">
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <button className="btn ghost sm" disabled={!!sq || flagged} title="Bulan berikutnya" onClick={() => setMonth(m => addMonths(m, 1))}>›</button>
+            {month !== thisMonth() && !sq && !flagged && <button className="btn ghost sm" onClick={() => setMonth(thisMonth())}>Bulan ini</button>}
+          </div>
           <div className="seg-lens">
-            {[['all', 'All'], ['blank', 'Not filled'], ['filled', 'Filled']].map(([v, l]) => (<button key={v} className={filter === v ? 'on' : ''} onClick={() => setFilter(v)}>{l}</button>))}
+            {[['all', 'All'], ['blank', 'Not filled'], ['filled', 'Filled'], ['nocontract', `Tanpa kontrak${noContract ? ` (${noContract})` : ''}`]].map(([v, l]) => (<button key={v} className={filter === v ? 'on' : ''} onClick={() => setFilter(v)}>{l}</button>))}
           </div>
         </div>
 
-        {visible.length === 0 ? (
-          <Empty title="No slips">{q ? 'No matches.' : month !== 'all' ? `No slips in ${monthLabel(month)} — pick another month above.` : 'Create a slip with “+ New slip”, or add a delivery in a contract.'}</Empty>
+        {(flagCount > 0 || flagged) && !sq && (
+          <div className="cek-banner">
+            {flagged
+              ? <><b>Perlu dicek</b> — semua bulan, {flagCount} slip tersisa. Perbaiki slipnya bila perlu, lalu klik “Sudah dicek”.
+                  <button className="btn ghost sm" onClick={() => setFlagged(false)}>Kembali ke {monthLabel(month)}</button></>
+              : <>⚠ <b>{flagCount} slip perlu dicek</b> — berbeda dengan laporan borongan harian.
+                  <button className="btn ghost sm" onClick={() => { setFilter('all'); setFlagged(true) }}>Tampilkan</button></>}
+          </div>
+        )}
+        {busy ? <Spinner /> : visible.length === 0 ? (
+          <Empty title="No slips">{sq ? `No slips match “${sq}”.` : `No slips in ${monthLabel(month)} — pick another month above, or create one with “+ New slip”.`}</Empty>
         ) : (
           <>
-            <div className="hist-count">{visible.length} slip{visible.length === 1 ? '' : 's'} · total net Rp {total.toLocaleString()}</div>
+            <div className="hist-count">{sq ? `Search “${sq}”, all months: ` : flagged ? 'Perlu dicek, semua bulan: ' : `${monthLabel(month)}: `}{visible.length} slip{visible.length === 1 ? '' : 's'}{sq && slips.length >= SEARCH_LIMIT ? ` (latest ${SEARCH_LIMIT} — type more to narrow it down)` : ''} · total net Rp {total.toLocaleString()}</div>
             <div className="dk-wrap">
               <table className="dk-tbl slip-grid">
                 <thead>
@@ -234,21 +347,35 @@ export default function FleetSlips() {
                     const partCtl = d.parts.map(p => p.contract?.control_no || '—').join(', ')
                     return (
                       <Fragment key={d.id}>
-                      <tr className={locked ? 'row-locked' : ''}>
+                      <tr className={(locked ? 'row-locked' : '') + (d.is_retur ? ' row-retur' : '') + (d.cek_note ? ' row-cek' : '')}>
                         <td className="dk-actions">
                           <button className="btn ghost sm" onClick={() => setPrintId(d.id)}>Print</button>
                           <button className={'btn ghost sm' + (hasAdj(d) ? ' driver-on' : '')} disabled={locked} onClick={() => setAdjFor(d.id)}>Adj{hasAdj(d) ? ' ✓' : ''}</button>
-                          <button className="btn ghost sm" disabled={locked} title="Satu muatan, kontrak lain — tambah kontrak ke slip ini" onClick={() => setPartFor(d.id)}>+ Kontrak</button>
+                          {d.is_retur ? <>
+                            <span className="retur-chip" title={d.retur_amount != null ? `Rp ${Number(d.retur_amount).toLocaleString('id-ID')} dikembalikan` : 'Trip batal — uang belum kembali'}>Retur{d.retur_date ? ' ' + fmtDate(d.retur_date) : ' · belum kembali'}</span>
+                            {!d.retur_date && <button className="btn ghost sm" disabled={locked} title="Uang jalan sudah dikembalikan hari ini" onClick={() => saveRetur(d)}>Uang kembali</button>}
+                            <button className="btn ghost sm" disabled={locked} onClick={() => cancelRetur(d)}>Batal retur</button>
+                          </> : <>
+                            <button className="btn ghost sm" disabled={locked || !d.contract_id} title={d.contract_id ? 'Satu muatan, kontrak lain — tambah kontrak ke slip ini' : 'Pilih kontrak slip ini dulu (kolom No. Kontrol)'} onClick={() => setPartFor(d.id)}>+ Kontrak</button>
+                            <button className="btn ghost sm" disabled={locked || !canRetur(d)} title={canRetur(d) ? 'Trip batal — uang jalan dikembalikan hari ini' : 'Retur hanya untuk slip tanpa muatan/bongkar dan tanpa kontrak kedua'} onClick={() => saveRetur(d)}>Retur</button>
+                          </>}
                           {locked
                             ? <button className="btn ghost sm" title="Past-dated — unlock to edit" onClick={() => setUnlockFor(d.id)}>🔒</button>
                             : <button className="btn ghost sm void-btn" onClick={() => { if (confirm(d.parts.length ? `Remove this slip? The other contract on this load (${partCtl}) is removed too, with its recorded muatan/bongkar.` : 'Remove this slip/delivery?')) delRow(d.id) }}>✕</button>}
                         </td>
                         <td><input type="date" disabled={locked} value={d.tanggal || ''} onChange={e => setCell(d.id, 'tanggal', e.target.value)} onBlur={e => saveField(d.id, 'tanggal', e.target.value)} /></td>
-                        <td><select disabled={locked} value={d.truck_id || ''} onChange={e => saveTruck(d.id, e.target.value)}><option value="">{d.plate || '—'}</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></td>
-                        <td><select disabled={locked} value={d.driver_name || ''} onChange={e => { setCell(d.id, 'driver_name', e.target.value); saveField(d.id, 'driver_name', e.target.value) }}><option value="">—</option>{drivers.map(dr => <option key={dr.name} value={dr.name}>{dr.name}</option>)}{d.driver_name && !drivers.some(x => x.name === d.driver_name) && <option value={d.driver_name}>{d.driver_name}</option>}</select></td>
-                        <td><select disabled={locked} value={d.contract_id || ''} onChange={e => saveContractLink(d.id, e.target.value)}>{contracts.filter(c => !d.parts.some(p => p.contract_id === c.id)).map(c => <option key={c.id} value={c.id}>{c.control_no}</option>)}</select></td>
-                        <td className="ro">{d.contract?.origin || '—'}</td>
-                        <td className="ro">{d.contract?.destination || '—'}</td>
+                        <td><LazySelect disabled={locked} value={d.truck_id || ''} onChange={e => saveTruck(d.id, e.target.value)} label={d.plate || '—'}
+                          options={() => <><option value="">{d.plate || '—'}</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</>} /></td>
+                        <td><LazySelect disabled={locked} value={d.driver_name || ''} onChange={e => { setCell(d.id, 'driver_name', e.target.value); saveField(d.id, 'driver_name', e.target.value) }} label={d.driver_name || '—'}
+                          options={() => <><option value="">—</option>{drivers.map(dr => <option key={dr.name} value={dr.name}>{dr.name}</option>)}{d.driver_name && !drivers.some(x => x.name === d.driver_name) && <option value={d.driver_name}>{d.driver_name}</option>}</>} /></td>
+                        <td><LazySelect disabled={locked} value={d.contract_id || ''} onChange={e => saveContractLink(d.id, e.target.value)} label={d.contract?.control_no || '— belum ada —'}
+                          className={d.contract_id ? '' : 'no-contract'} title={d.contract_id ? '' : 'Belum ada kontrak — pilih kontraknya, slip dapat nomor DO berikutnya'}
+                          options={() => <>{!d.parts.length && <option value="">— belum ada —</option>}{contracts.filter(c => !d.parts.some(p => p.contract_id === c.id)).map(c => <option key={c.id} value={c.id}>{c.control_no}</option>)}</>} /></td>
+                        {d.contract_id ? <>
+                          <td className="ro">{d.contract?.origin || '—'}</td>
+                          <td className="ro">{d.contract?.destination || '—'}</td>
+                        </> : <td colSpan={2}><input disabled={locked} className="rute-in" value={d.rute || ''} placeholder="Rute (belum ada kontrak)" title="Rute di slip uang jalan — dipakai sampai kontraknya dipilih"
+                          onChange={e => setCell(d.id, 'rute', e.target.value)} onBlur={e => saveField(d.id, 'rute', e.target.value.trim())} /></td>}
                         <td><NumInput disabled={locked} value={d.borongan} onChange={n => setCell(d.id, 'borongan', n)} onCommit={n => saveField(d.id, 'borongan', n)} /></td>
                         <td><NumInput disabled={locked} value={d.bbm_liter} onChange={n => setCell(d.id, 'bbm_liter', n)} onCommit={n => saveBbm(d.id, 'bbm_liter', n)} /></td>
                         <td><NumInput disabled={locked} value={d.price_per_liter} onChange={n => setCell(d.id, 'price_per_liter', n)} onCommit={n => saveBbm(d.id, 'price_per_liter', n)} /></td>
@@ -269,12 +396,20 @@ export default function FleetSlips() {
                             {!locked && <button className="btn ghost sm void-btn" title="Remove this contract from the slip" onClick={() => { if (confirm(`Remove contract ${p.contract?.control_no || ''} from this slip? Its recorded muatan/bongkar on that contract are deleted too.`)) delPart(d, p) }}>✕</button>}
                           </td>
                           <td colSpan={3} className="ro slip-part-lbl">↳ Kontrak ke-{i + 2} · DO {p.do_no ?? '—'}</td>
-                          <td><select disabled={locked} value={p.contract_id || ''} onChange={e => saveContractLink(p.id, e.target.value)}>{contracts.filter(c => c.id === p.contract_id || (c.id !== d.contract_id && !d.parts.some(o => o.contract_id === c.id))).map(c => <option key={c.id} value={c.id}>{c.control_no}</option>)}</select></td>
+                          <td><LazySelect disabled={locked} value={p.contract_id || ''} onChange={e => saveContractLink(p.id, e.target.value)} label={p.contract?.control_no || '—'}
+                            options={() => contracts.filter(c => c.id === p.contract_id || (c.id !== d.contract_id && !d.parts.some(o => o.contract_id === c.id))).map(c => <option key={c.id} value={c.id}>{c.control_no}</option>)} /></td>
                           <td className="ro">{p.contract?.origin || '—'}</td>
                           <td className="ro">{p.contract?.destination || '—'}</td>
                           <td colSpan={13} className="ro slip-part-note">Muatan masuk kontrak ini · uang jalan ikut slip di atas{p.estimasi_muat != null ? ` · est. muat ${fmtId(p.estimasi_muat)} kg` : ''}</td>
                         </tr>
                       ))}
+                      {d.cek_note && (
+                        <tr className="slip-cek">
+                          <td colSpan={20}><div className="cek-note">
+                            <button className="btn ghost sm" disabled={locked} title="Slip sudah diperiksa (dan diperbaiki bila perlu)" onClick={() => clearCek(d)}>Sudah dicek</button>
+                            <span>⚠ <b>Perlu dicek:</b> {d.cek_note}</span></div></td>
+                        </tr>
+                      )}
                       </Fragment>
                     )
                   })}
@@ -295,6 +430,19 @@ export default function FleetSlips() {
       {unlockFor && <UnlockModal onOk={tryUnlock} onCancel={() => setUnlockFor(null)} />}
       {node}
     </>
+  )
+}
+
+// A month can hold a few hundred slips, each with truck / driver / contract dropdowns (185 contracts):
+// building every option up front is what made the page slow. Until the pointer or keyboard reaches it,
+// the dropdown holds only its current choice; the full list is built the moment it is needed.
+function LazySelect({ value, label, options, ...rest }) {
+  const [full, setFull] = useState(false)
+  const wake = () => { if (!full) setFull(true) }
+  return (
+    <select value={value} {...rest} onMouseEnter={wake} onFocus={wake} onMouseDown={wake} onTouchStart={wake}>
+      {full ? options() : <option value={value}>{label}</option>}
+    </select>
   )
 }
 
@@ -319,7 +467,6 @@ function AdjustModal({ d, onSave, onClose }) {
     potongan_pihak: d.potongan_pihak ?? '', potongan_pihak_nama: d.potongan_pihak_nama || '',
     tambahan_cuci: d.tambahan_cuci ?? '', tambahan_steam: d.tambahan_steam ?? '', tambahan_tol: d.tambahan_tol ?? '',
     tambahan_bantuan: d.tambahan_bantuan ?? '', tambahan_bantuan_ket: d.tambahan_bantuan_ket || '',
-    is_retur: !!d.is_retur,
   })
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
   const nz = v => (v === '' || v === null || v === undefined) ? 0 : Number(v)
@@ -333,7 +480,6 @@ function AdjustModal({ d, onSave, onClose }) {
       potongan_pihak: orNull(f.potongan_pihak), potongan_pihak_nama: f.potongan_pihak_nama.trim() || null,
       tambahan_cuci: orNull(f.tambahan_cuci), tambahan_steam: orNull(f.tambahan_steam), tambahan_tol: orNull(f.tambahan_tol),
       tambahan_bantuan: orNull(f.tambahan_bantuan), tambahan_bantuan_ket: f.tambahan_bantuan_ket.trim() || null,
-      is_retur: f.is_retur,
     })
   }
   return (
@@ -357,7 +503,6 @@ function AdjustModal({ d, onSave, onClose }) {
           <label><span>Bantuan</span><NumInput value={f.tambahan_bantuan} onChange={v => set('tambahan_bantuan', v)} onCommit={v => set('tambahan_bantuan', v)} /></label>
           <label style={{ gridColumn: 'span 2' }}><span>Keterangan bantuan</span><input value={f.tambahan_bantuan_ket} onChange={e => set('tambahan_bantuan_ket', e.target.value)} placeholder="mis. Bantuan tol" /></label>
         </div>
-        <label className="adj-retur"><input type="checkbox" checked={f.is_retur} onChange={e => set('is_retur', e.target.checked)} /> Slip untuk retur</label>
         <div style={{ display: 'flex', alignItems: 'center', marginTop: 14 }}>
           <span style={{ fontWeight: 700 }}>Sisa: {rp(preview)}</span>
           <div className="btn-group" style={{ marginLeft: 'auto' }}>
@@ -412,10 +557,10 @@ function AddPartModal({ main, contracts, onSave, onClose }) {
 
 function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   const [f, setF] = useState({
-    contract_id: '', truck_id: '', driver_name: '', tanggal: new Date().toISOString().slice(0, 10),
+    contract_id: '', rute: '', truck_id: '', driver_name: '', tanggal: new Date().toISOString().slice(0, 10),
     borongan: '', bbm_liter: '', price_per_liter: '', potongan_susut: '', potongan_ban: '', potongan_sparepart: '', potongan_lain: '', potongan_pm: '40000', potongan_kasbon: '',
     selisih_liter: '', selisih_price: '', potongan_pihak: '', potongan_pihak_nama: '',
-    tambahan_cuci: '', tambahan_steam: '', tambahan_tol: '', tambahan_bantuan: '', tambahan_bantuan_ket: '', is_retur: false, keterangan: '',
+    tambahan_cuci: '', tambahan_steam: '', tambahan_tol: '', tambahan_bantuan: '', tambahan_bantuan_ket: '', keterangan: '',
     contract2_id: '', est2: '',
   })
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
@@ -461,12 +606,13 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
   const cap = truck?.capacity_kg != null ? Number(truck.capacity_kg) : null
   const estMain = cap == null ? null : (k2 && orNull(f.est2) != null ? Math.max(cap - Number(f.est2), 0) : cap)
   function submit() {
-    if (!f.contract_id) return setErr('Pick a contract.')
+    if (!f.contract_id && !f.rute.trim()) return setErr('Pick a contract, or type the route if the contract is not known yet.')
+    if (k2 && !f.contract_id) return setErr('Pick the first contract before a second one.')
     if (k2 && k2 === f.contract_id) return setErr('The second contract must be different from the first.')
     if (nz(f.borongan) <= 0) return setErr('Borongan is required.')
     if (f.potongan_pm === '' || f.potongan_pm === null) return setErr('PM is required.')
     onCreate({
-      contract_id: f.contract_id, truck_id: f.truck_id || null, plate: truck?.plate || null,
+      contract_id: f.contract_id || null, rute: f.contract_id ? null : f.rute.trim(), truck_id: f.truck_id || null, plate: truck?.plate || null,
       driver_name: f.driver_name || null, tanggal: f.tanggal || null,
       estimasi_muat: estMain,
       borongan: orNull(f.borongan), bbm_liter: orNull(f.bbm_liter), price_per_liter: orNull(f.price_per_liter), bbm_rupiah: totalBbm || null,
@@ -476,14 +622,15 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
       potongan_pihak: orNull(f.potongan_pihak), potongan_pihak_nama: f.potongan_pihak_nama || null,
       tambahan_cuci: orNull(f.tambahan_cuci), tambahan_steam: orNull(f.tambahan_steam), tambahan_tol: orNull(f.tambahan_tol),
       tambahan_bantuan: orNull(f.tambahan_bantuan), tambahan_bantuan_ket: f.tambahan_bantuan_ket.trim() || null,
-      is_retur: f.is_retur, keterangan: f.keterangan.trim() || null,
+      keterangan: f.keterangan.trim() || null,
     }, k2 ? { contract_id: k2, estimasi_muat: orNull(f.est2) } : null)
   }
 
   return (
     <div className="form nsf" style={{ maxWidth: 680 }}>
       <div className="nsf-grid">
-        <div className="nsf-f"><span>Contract *</span><SearchSelect value={f.contract_id} onChange={v => set('contract_id', v)} placeholder="Pick…" options={contracts.map(c => ({ value: c.id, label: c.control_no, sub: c.client || '', search: c.client || '' }))} /></div>
+        <div className="nsf-f"><span>Contract</span><SearchSelect value={f.contract_id} onChange={v => set('contract_id', v)} placeholder="Pick… or leave empty" options={contracts.map(c => ({ value: c.id, label: c.control_no, sub: c.client || '', search: c.client || '' }))} /></div>
+        {!f.contract_id && <label><span>Rute (belum ada kontrak) *</span><input value={f.rute} onChange={e => set('rute', e.target.value)} placeholder="mis. ANS - SDS" /></label>}
         <label><span>Date</span><input type="date" value={f.tanggal} onChange={e => set('tanggal', e.target.value)} /></label>
         <div className="nsf-f"><span>Truck</span><SearchSelect value={f.truck_id} onChange={v => set('truck_id', v)} placeholder="Pick…" options={trucks.map(t => ({ value: t.id, label: t.plate }))} /></div>
         <div className="nsf-f"><span>Driver</span><SearchSelect value={f.driver_name} onChange={v => set('driver_name', v)} placeholder="Pick…" options={drivers.map(d => ({ value: d.name, label: d.nickname ? `${d.name} (${d.nickname})` : d.name }))} /></div>
@@ -522,7 +669,6 @@ function NewSlip({ contracts, trucks, drivers, onCreate, onCancel }) {
           <label><span>Uang jembatan / tol</span><NumInput value={f.tambahan_tol} onChange={v => set('tambahan_tol', v)} onCommit={v => set('tambahan_tol', v)} /></label>
           <label><span>Bantuan</span><NumInput value={f.tambahan_bantuan} onChange={v => set('tambahan_bantuan', v)} onCommit={v => set('tambahan_bantuan', v)} /></label>
           <label><span>Keterangan bantuan</span><input value={f.tambahan_bantuan_ket} onChange={e => set('tambahan_bantuan_ket', e.target.value)} placeholder="mis. Bantuan tol" /></label>
-          <label className="adj-retur" style={{ gridColumn: '1 / -1', marginTop: 0 }}><input type="checkbox" checked={f.is_retur} onChange={e => set('is_retur', e.target.checked)} /> Slip untuk retur</label>
         </div></div>
       )}
 
@@ -558,7 +704,7 @@ function SlipPrintH({ d, c, onClose }) {
             <th>BBM LITER</th><th>PRICE/L</th><th>TOTAL BBM</th><th>SUSUT</th><th>BAN</th><th>S.PART</th><th>LAIN</th><th>PM</th><th>KASBON</th><th>SISA BORONGAN</th><th>KETERANGAN</th>
           </tr></thead>
           <tbody><tr>
-            <td>{d.do_no}</td><td>{c.control_no || '—'}</td><td>{c.origin || '—'}</td><td>{c.destination || '—'}</td>
+            <td>{d.do_no ?? '—'}</td><td>{c.control_no || '—'}</td>{d.contract_id ? <><td>{c.origin || '—'}</td><td>{c.destination || '—'}</td></> : <td colSpan={2}>{d.rute || '—'}</td>}
             <td className="r" rowSpan={span}>{rp(d.borongan)}</td><td className="r" rowSpan={span}>{d.bbm_liter || ''}</td><td className="r" rowSpan={span}>{rp(d.price_per_liter)}</td><td className="r" rowSpan={span}>{rp(totalBbm(d))}</td>
             <td className="r" rowSpan={span}>{rp(d.potongan_susut)}</td><td className="r" rowSpan={span}>{rp(d.potongan_ban)}</td><td className="r" rowSpan={span}>{rp(d.potongan_sparepart)}</td><td className="r" rowSpan={span}>{rp(d.potongan_lain)}</td><td className="r" rowSpan={span}>{rp(d.potongan_pm)}</td><td className="r" rowSpan={span}>{rp(d.potongan_kasbon)}</td>
             <td className="r" rowSpan={span} style={{ fontWeight: 800 }}>{rp(netOf(d))}</td><td rowSpan={span}>{d.keterangan || ''}</td>

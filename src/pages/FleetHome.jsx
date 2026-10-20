@@ -23,8 +23,8 @@ export default function FleetHome() {
     setLoading(true)
     const [tr, dl] = await Promise.all([
       supabase.from('trucks').select('id,plate,stage,fleet_division,status').eq('status', 'Active').order('plate'),
-      supabase.from('fleet_deliveries').select('id,parent_id,plate,driver_name,tanggal,contract:fleet_contracts(origin,destination)')
-        .not('driver_name', 'is', null).is('tanggal_bongkar', null),
+      supabase.from('fleet_deliveries').select('id,parent_id,plate,driver_name,tanggal,rute,contract:fleet_contracts(origin,destination)')
+        .not('driver_name', 'is', null).is('tanggal_bongkar', null).eq('is_retur', false),
     ])
     setTrucks(tr.data || [])
     // Open trips per plate (a two-contract load counts once, with both routes); latest slip date wins.

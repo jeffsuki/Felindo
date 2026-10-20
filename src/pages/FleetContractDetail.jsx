@@ -31,7 +31,7 @@ export default function FleetContractDetail() {
       // (parent_id = main). Embed the other side of each link for the badges.
       supabase.from('fleet_deliveries')
         .select('*, parent:parent_id(do_no,contract:fleet_contracts(control_no)), parts:fleet_deliveries!parent_id(id,do_no,contract:fleet_contracts(control_no))')
-        .eq('contract_id', id).order('do_no', { ascending: true }),
+        .eq('contract_id', id).eq('is_retur', false).order('do_no', { ascending: true }),   // a retur slip is not a delivery
       supabase.from('trucks').select('id,plate,capacity_kg,status').eq('status', 'Active').order('plate'),
       supabase.from('drivers').select('name,nickname,status').eq('status', 'Active').order('name'),
     ])

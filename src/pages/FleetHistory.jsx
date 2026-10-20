@@ -15,7 +15,7 @@ export default function FleetHistory() {
   useEffect(() => {
     if (!isConfigured) { setLoading(false); return }
     // Trips = slips; a second contract on the same load (parent_id set) is not another trip.
-    fetchAll(() => supabase.from('fleet_deliveries').select('id,plate,driver_name').is('parent_id', null))
+    fetchAll(() => supabase.from('fleet_deliveries').select('id,plate,driver_name').is('parent_id', null).eq('is_retur', false))
       .then(({ data }) => { setRows(data || []); setLoading(false) })
   }, [])
 

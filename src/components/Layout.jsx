@@ -17,6 +17,8 @@ const NAVS = {
     { to: '/fleet/tembak', label: 'Uang Tembak' },
     { to: '/fleet/hutang', label: 'Hutang Supir' },
     { to: '/fleet/reports', label: 'Daily Report' },
+    { to: '/fleet/kas', label: 'Laporan Kas' },
+    { to: '/fleet/cek-laporan', label: 'Cek Laporan (sementara)' },
     { to: '/fleet/history', label: 'Route History' },
     { to: '/fleet/registers', label: 'Clients & Places' },
   ],

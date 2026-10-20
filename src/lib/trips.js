@@ -45,7 +45,8 @@ export const tripSusut = t => tripReady(t) ? tripSum(t, 'muatan') - tripSum(t, '
 export function tripRoute(t, sep = ' → ') {
   const seen = []
   for (const r of legsOf(t)) {
-    const s = `${r.contract?.origin || '—'}${sep}${r.contract?.destination || '—'}`
+    // a slip still without its contract shows the route written on the uang jalan (0039)
+    const s = r.contract ? `${r.contract.origin || '—'}${sep}${r.contract.destination || '—'}` : (r.rute || `—${sep}—`)
     if (!seen.includes(s)) seen.push(s)
   }
   return seen.join(' + ')

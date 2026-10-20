@@ -4,6 +4,7 @@ import { Spinner, Empty, useToast } from '../components/ui'
 
 const nf = n => (n === null || n === undefined || n === '' || Number(n) === 0) ? '' : Number(n).toLocaleString('id-ID')
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
+const fmtShort = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) : ''
 const fmtDay = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'long', year: 'numeric' }) : ''
 const ujNet = d => num(d.borongan) - num(d.selisih_bbm) - num(d.potongan_pihak) - num(d.bbm_rupiah) - (num(d.potongan_susut) + num(d.potongan_ban) + num(d.potongan_sparepart) + num(d.potongan_lain) + num(d.potongan_pm) + num(d.potongan_kasbon)) + num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol) + num(d.tambahan_bantuan)
 const potOf = d => num(d.potongan_susut) + num(d.potongan_ban) + num(d.potongan_sparepart) + num(d.potongan_pm) + num(d.potongan_kasbon)
@@ -59,7 +60,7 @@ export default function FleetReports() {
   useEffect(() => {
     if (!isConfigured) return
     setLoading(true)
-    const sel = 'id,plate,driver_name,muatan,estimasi_muat,borongan,bbm_liter,price_per_liter,bbm_rupiah,potongan_susut,potongan_ban,potongan_sparepart,potongan_pm,potongan_lain,potongan_kasbon,jenis_potongan,selisih_bbm,selisih_bbm_liter,selisih_bbm_price,potongan_pihak,potongan_pihak_nama,tambahan_cuci,tambahan_steam,tambahan_tol,tambahan_bantuan,tambahan_bantuan_ket,is_retur,keterangan,tembak_amount,tembak_potongan,tembak_jenis_potongan,contract:fleet_contracts(control_no,origin,destination)'
+    const sel = 'id,plate,driver_name,muatan,estimasi_muat,borongan,bbm_liter,price_per_liter,bbm_rupiah,potongan_susut,potongan_ban,potongan_sparepart,potongan_pm,potongan_lain,potongan_kasbon,jenis_potongan,selisih_bbm,selisih_bbm_liter,selisih_bbm_price,potongan_pihak,potongan_pihak_nama,tambahan_cuci,tambahan_steam,tambahan_tol,tambahan_bantuan,tambahan_bantuan_ket,is_retur,retur_date,retur_amount,keterangan,tembak_amount,tembak_potongan,tembak_jenis_potongan,rute,contract:fleet_contracts(control_no,origin,destination)'
     Promise.all([
       supabase.from('fleet_deliveries').select(sel).eq('tanggal', date).not('borongan', 'is', null),
       supabase.from('fleet_deliveries').select(sel).eq('tembak_released_date', date),
@@ -71,7 +72,8 @@ export default function FleetReports() {
     })
   }, [date])
 
-  const route = d => `${d.contract?.origin || '—'} - ${d.contract?.destination || '—'}`
+  // a slip without its contract yet is grouped by the route written on the uang jalan
+  const route = d => d.contract ? `${d.contract.origin || '—'} - ${d.contract.destination || '—'}` : `${d.rute || '—'} · belum ada kontrak`
   const ujGroups = useMemo(() => groupBy(uj, route), [uj])
   const tbGroups = useMemo(() => groupBy(tb, route), [tb])
 
@@ -119,11 +121,11 @@ export default function FleetReports() {
                       return (
                         <Fragment key={d.id}>
                           <tr className={det.length ? 'clickrow' : ''} onClick={() => det.length && toggleRow(d.id)}>
-                            <td>{i + 1}</td><td className="mono nowrap">{d.plate || '—'}</td><td>{d.driver_name || '—'}{d.is_retur ? ' (Retur)' : ''}</td>
+                            <td>{i + 1}</td><td className="mono nowrap">{d.plate || '—'}</td><td>{d.driver_name || '—'}</td>
                             <td className="r mono">{nf(tonaseOf(d))}</td><td className="r mono">{nf(d.borongan)}</td><td className="r mono">{penyOf(d) ? nf(penyOf(d)) : ''}</td>
                             <td className="r mono">{nf(d.bbm_liter)}</td><td className="r mono">{nf(d.price_per_liter)}</td><td className="r mono">{nf(d.bbm_rupiah)}</td>
                             <td className="r mono">{nf(potOf(d))}</td><td className="r mono">{nf(lainOf(d))}</td>
-                            <td className="r mono">{nf(ujNet(d))}</td><td>{d.parts?.length ? <span className="part-badge" style={{ marginLeft: 0, marginRight: 6 }}>+ {d.parts.map(p => `${p.contract?.control_no || '—'} ${p.contract?.origin || '—'}-${p.contract?.destination || '—'}`).join(', ')}</span> : null}{d.keterangan || ''}{det.length ? <span className="lb-caret">{open ? ' ▾' : ' ▸'}</span> : ''}</td>
+                            <td className="r mono">{nf(ujNet(d))}</td><td>{d.is_retur ? <span className="lb-retur">RETUR{d.retur_date ? ` ${fmtShort(d.retur_date)}` : ' (belum kembali)'}{d.retur_amount != null ? ` · Rp ${nf(d.retur_amount)}` : ''} </span> : null}{d.parts?.length ? <span className="part-badge" style={{ marginLeft: 0, marginRight: 6 }}>+ {d.parts.map(p => `${p.contract?.control_no || '—'} ${p.contract?.origin || '—'}-${p.contract?.destination || '—'}`).join(', ')}</span> : null}{d.keterangan || ''}{det.length ? <span className="lb-caret">{open ? ' ▾' : ' ▸'}</span> : ''}</td>
                           </tr>
                           {open && det.map(([label, amt, grp], k) => (
                             <tr className="lb-detail" key={d.id + 'd' + k}>
