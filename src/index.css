@@ -745,3 +745,7 @@ tr.row-reject td input, tr.row-reject td select { color: var(--muted); }
 .ct-rej-n { font-size: 12px; font-weight: 500; color: var(--urgent); }
 .dk-actions .btn.rej-btn { color: var(--muted); border-color: transparent; background: transparent; font-weight: 500; }
 .dk-actions .btn.rej-btn:hover { color: var(--urgent); border-color: var(--line); }
+
+/* sortable column headers (daftar kontrol, contracts list) */
+.dk-tbl th.sortable, .ct-tbl th.sortable { cursor: pointer; user-select: none; }
+.dk-tbl th.sortable:hover, .ct-tbl th.sortable:hover { color: var(--text); }

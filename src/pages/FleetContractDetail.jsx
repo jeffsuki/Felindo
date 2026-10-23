@@ -30,6 +30,14 @@ export default function FleetContractDetail() {
   const [trucks, setTrucks] = useState([])
   const [drivers, setDrivers] = useState([])
   const [loading, setLoading] = useState(true)
+  // Daftar kontrol order: by DO number or by date. The order is fixed when the list loads or the sort changes,
+  // so a row does not jump while its date or DO number is being edited.
+  const [sortBy, setSortBy] = useState('do')       // 'do' | 'date'
+  const [sortDir, setSortDir] = useState('asc')
+  const [order, setOrder] = useState([])
+  const [tick, setTick] = useState(0)
+  function sort(col) { if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy(col); setSortDir('asc') } }
+  const arrow = col => sortBy === col ? (sortDir === 'asc' ? ' \u2191' : ' \u2193') : ''
 
   async function load() {
     if (!isConfigured) { setLoading(false); return }
@@ -44,10 +52,21 @@ export default function FleetContractDetail() {
       supabase.from('trucks').select('id,plate,capacity_kg,status').eq('status', 'Active').order('plate'),
       supabase.from('drivers').select('name,nickname,status').eq('status', 'Active').order('name'),
     ])
-    setC(ct.data || null); setRows(dl.data || []); setTrucks(tr.data || []); setDrivers(dr.data || [])
+    setC(ct.data || null); setRows(dl.data || []); setTrucks(tr.data || []); setDrivers(dr.data || []); setTick(t => t + 1)
     setLoading(false)
   }
   useEffect(() => { load() }, [id])
+  useEffect(() => {
+    const dir = sortDir === 'asc' ? 1 : -1
+    const n = v => (v === null || v === undefined || v === '') ? null : Number(v)
+    const cmpDo = (a, b) => (n(a.do_no) === null) - (n(b.do_no) === null) || dir * ((n(a.do_no) ?? 0) - (n(b.do_no) ?? 0))
+    const cmpDate = (a, b) => (!a.tanggal) - (!b.tanggal) || dir * String(a.tanggal || '').localeCompare(String(b.tanggal || ''))
+    setOrder([...rows].sort((a, b) => sortBy === 'date' ? (cmpDate(a, b) || cmpDo(a, b)) : (cmpDo(a, b) || cmpDate(a, b))).map(d => d.id))
+  }, [tick, sortBy, sortDir])   // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = useMemo(() => {
+    const pos = new Map(order.map((rid, i) => [rid, i]))
+    return [...rows].sort((a, b) => (pos.has(a.id) ? pos.get(a.id) : 1e9) - (pos.has(b.id) ? pos.get(b.id) : 1e9))
+  }, [rows, order])
 
   const totals = useMemo(() => {
     const t = { muatan: 0, bongkar: 0, susut: 0, committed: 0, claim: 0 }
@@ -158,8 +177,8 @@ export default function FleetContractDetail() {
           <table className="dk-tbl">
             <thead>
               <tr>
-                <th style={{ width: 44 }}>DO</th>
-                <th style={{ width: 120 }}>Tanggal</th>
+                <th style={{ width: 44 }} className="sortable" onClick={() => sort('do')} title="Urutkan menurut nomor DO">DO{arrow('do')}</th>
+                <th style={{ width: 120 }} className="sortable" onClick={() => sort('date')} title="Urutkan menurut tanggal">Tanggal{arrow('date')}</th>
                 <th style={{ width: 130 }}>Plat</th>
                 <th style={{ width: 150 }}>Supir</th>
                 <th style={{ width: 100 }}>Est. muat</th>
@@ -177,7 +196,7 @@ export default function FleetContractDetail() {
               {rows.length === 0 && (
                 <tr><td colSpan={13} style={{ padding: 20, textAlign: 'center', color: 'var(--muted)' }}>No deliveries yet — add a row below.</td></tr>
               )}
-              {rows.map(d => {
+              {shown.map(d => {
                 const s = (!d.is_reject && d.muatan != null && d.muatan !== '' && d.bongkar != null && d.bongkar !== '') ? Number(d.muatan) - Number(d.bongkar) : null
                 const rowOver = c.susut_tolerance != null && d.muatan > 0 && s != null && (s / Number(d.muatan)) > Number(c.susut_tolerance)
                 // A part shares date / truck / driver with its slip; those are edited on the slip.

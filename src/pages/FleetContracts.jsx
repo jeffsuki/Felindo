@@ -38,6 +38,10 @@ export default function FleetContracts() {
   const [formFor, setFormFor] = useState(null)   // 'new' | contract object | null
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('date')     // 'date' (contract date) | 'no' (control number)
+  const [sortDir, setSortDir] = useState('desc')
+  function sort(col) { if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy(col); setSortDir(col === 'date' ? 'desc' : 'asc') } }
+  const arrow = col => sortBy === col ? (sortDir === 'asc' ? ' \u2191' : ' \u2193') : ''
 
   async function load() {
     if (!isConfigured) { setLoading(false); return }
@@ -57,12 +61,18 @@ export default function FleetContracts() {
 
   const visible = useMemo(() => {
     const s = q.trim().toLowerCase()
+    const dir = sortDir === 'asc' ? 1 : -1
+    const byNo = (a, b) => String(a.control_no || '').localeCompare(String(b.control_no || ''), undefined, { numeric: true })
     return rows.filter(c => {
       if (statusFilter !== 'all' && contractStatus(c, totals[c.id]) !== statusFilter) return false
       if (!s) return true
       return `${c.control_no} ${c.contract_no} ${c.client} ${c.origin} ${c.destination} ${c.commodity}`.toLowerCase().includes(s)
+    }).sort((a, b) => {
+      if (sortBy === 'no') return dir * byNo(a, b)
+      if (!a.contract_date !== !b.contract_date) return a.contract_date ? -1 : 1     // no date: always last
+      return dir * (String(a.contract_date || '').localeCompare(String(b.contract_date || '')) || byNo(a, b))
     })
-  }, [rows, q, statusFilter, totals])
+  }, [rows, q, statusFilter, totals, sortBy, sortDir])
 
   async function saveContract(payload, id) {
     if (id) {
@@ -103,7 +113,8 @@ export default function FleetContracts() {
             <table className="dk-tbl ct-tbl">
               <thead>
                 <tr>
-                  <th>Contract Number</th><th>Date</th><th>Client</th><th>Origin</th><th>Destination</th>
+                  <th className="sortable" onClick={() => sort('no')} title="Urutkan menurut nomor kontrol">Contract Number{arrow('no')}</th>
+                  <th className="sortable" onClick={() => sort('date')} title="Urutkan menurut tanggal kontrak">Date{arrow('date')}</th><th>Client</th><th>Origin</th><th>Destination</th>
                   <th className="r">Outstanding</th><th className="r">Tagihan OA</th><th className="r">Total Claim Susut</th><th>Status</th><th></th>
                 </tr>
               </thead>
