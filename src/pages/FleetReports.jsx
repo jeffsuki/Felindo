@@ -48,10 +48,39 @@ const adjLines = d => {
 }
 const tbNet = d => num(d.tembak_amount) - num(d.tembak_potongan)
 const rp = n => 'Rp ' + Math.round(Number(n || 0)).toLocaleString('id-ID')
+const BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+// dates as 'YYYY-MM-DD' in local time (toISOString alone gives the UTC date, a day behind before 07:00 WIB)
+const isoOf = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const todayIso = () => isoOf(new Date())
+const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoOf(d) }
+const daysIn = (y, m) => new Date(y, m, 0).getDate()      // m = 1..12
+// tanggal / bulan / tahun with arrows for the previous and next day
+function DayPicker({ value, onChange }) {
+  const y = Number(value.slice(0, 4)), m = Number(value.slice(5, 7)), d = Number(value.slice(8, 10))
+  const set = (yy, mm, dd) => onChange(`${yy}-${String(mm).padStart(2, '0')}-${String(Math.min(dd, daysIn(yy, mm))).padStart(2, '0')}`)
+  const cy = new Date().getFullYear(); const years = []
+  for (let k = Math.max(y, cy); k >= Math.min(y, 2025); k--) years.push(k)
+  return (
+    <div className="btn-group no-print day-picker">
+      <button className="btn ghost sm" title="Hari sebelumnya" onClick={() => onChange(addDays(value, -1))}>‹</button>
+      <select value={d} onChange={e => set(y, m, Number(e.target.value))} aria-label="Tanggal" style={{ width: 'auto' }}>
+        {Array.from({ length: daysIn(y, m) }, (_, i) => i + 1).map(k => <option key={k} value={k}>{k}</option>)}
+      </select>
+      <select value={m} onChange={e => set(y, Number(e.target.value), d)} aria-label="Bulan" style={{ width: 'auto' }}>
+        {BULAN.map((l, i) => <option key={l} value={i + 1}>{l}</option>)}
+      </select>
+      <select value={y} onChange={e => set(Number(e.target.value), m, d)} aria-label="Tahun" style={{ width: 'auto' }}>
+        {years.map(k => <option key={k} value={k}>{k}</option>)}
+      </select>
+      <button className="btn ghost sm" title="Hari berikutnya" onClick={() => onChange(addDays(value, 1))}>›</button>
+      {value !== todayIso() && <button className="btn ghost sm" onClick={() => onChange(todayIso())}>Hari ini</button>}
+    </div>
+  )
+}
 
 export default function FleetReports() {
   const { node } = useToast()
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(todayIso)
   const [uj, setUj] = useState([])
   const [tb, setTb] = useState([])
   const [loading, setLoading] = useState(false)
@@ -92,7 +121,7 @@ export default function FleetReports() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           {(() => { const ids = uj.filter(d => detailLines(d).length).map(d => d.id); const allOpen = ids.length > 0 && ids.every(id => openRows.has(id));
             return ids.length > 0 ? <button className="btn ghost no-print" onClick={() => setOpenRows(allOpen ? new Set() : new Set(ids))}>{allOpen ? 'Collapse all' : 'Expand all'}</button> : null })()}
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ width: 'auto' }} />
+          <DayPicker value={date} onChange={setDate} />
           <button className="btn ghost no-print" onClick={() => window.print()}>Print</button>
         </div>
       </div>

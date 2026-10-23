@@ -756,3 +756,7 @@ tr.row-reject td input, tr.row-reject td select { color: var(--muted); }
 .rel-date-warn { margin-top: 10px; color: var(--urgent); font-size: 12.5px; }
 .rel-redate { display: inline-flex; align-items: center; gap: 6px; }
 .rel-redate input { width: auto; padding: 4px 6px; }
+
+/* daily report: tanggal / bulan / tahun picker with arrows */
+.day-picker { align-items: center; }
+.day-picker select { padding: 6px 8px; }
