@@ -10,7 +10,16 @@ const rp = n => (n === null || n === undefined || n === '') ? 'Rp 0' : 'Rp ' + N
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) : '—'
 const netOf = d => Number(d.borongan || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0) - Number(d.potongan_lain || 0)
 
-const NUMF = ['estimasi_muat', 'muatan', 'bongkar', 'borongan', 'bbm_liter', 'bbm_rupiah', 'potongan_susut', 'potongan_pm', 'potongan_lain', 'do_no']
+const NUMF = ['estimasi_muat', 'muatan', 'bongkar', 'borongan', 'bbm_liter', 'bbm_rupiah', 'potongan_susut', 'potongan_pm', 'potongan_lain', 'do_no', 'reject_oa_per_kg']
+
+const qtyKnown = c => !!c && c.quantity_kg !== null && c.quantity_kg !== undefined && c.quantity_kg !== ''
+// Tagihan of one row: billed kg × ongkos angkut; a reject is billed out and back on its muatan (OA + the return-leg rate).
+function tagihanOf(c, d) {
+  const oa = Number(c?.oa_per_kg || 0)
+  if (!oa) return 0
+  if (d.is_reject) return Number(d.muatan || 0) * (oa + Number(d.reject_oa_per_kg || 0))
+  return Number((c.billing_basis === 'muatan' ? d.muatan : d.bongkar) || 0) * oa
+}
 
 export default function FleetContractDetail() {
   const { id } = useParams()
@@ -43,7 +52,10 @@ export default function FleetContractDetail() {
   const totals = useMemo(() => {
     const t = { muatan: 0, bongkar: 0, susut: 0, committed: 0, claim: 0 }
     const tol = Number(c?.susut_tolerance ?? 0)
+    t.tagihan = 0; t.rejects = 0
     for (const d of rows) {
+      t.tagihan += tagihanOf(c, d)
+      if (d.is_reject) { t.rejects++; continue }      // a reject is billed but is no delivery for the contract
       t.muatan += Number(d.muatan || 0); t.bongkar += Number(d.bongkar || 0)
       if (d.muatan != null && d.muatan !== '' && d.bongkar != null && d.bongkar !== '') {
         const s = Number(d.muatan) - Number(d.bongkar)
@@ -53,8 +65,27 @@ export default function FleetContractDetail() {
       t.committed += Number(d.muatan ?? d.estimasi_muat ?? 0)
     }
     t.outstanding = Math.max(Number(c?.quantity_kg || 0) - t.committed, 0)
+    t.over = qtyKnown(c) ? Math.max(t.muatan - Number(c.quantity_kg), 0) : 0
+    t.noLoad = rows.filter(d => !d.is_reject && (d.muatan === null || d.muatan === undefined || d.muatan === '')).length
     return t
   }, [rows, c])
+  async function setReject(d, on) {
+    const msg = on ? 'Tandai muatan ini sebagai REJECT (ditolak, kembali ke asal)? Tidak dihitung sebagai muatan kontrak; ditagih pergi dan pulang.'
+                   : 'Batalkan reject? Muatan ini dihitung lagi sebagai muatan kontrak.'
+    if (!confirm(msg)) return
+    const patch = on ? { is_reject: true } : { is_reject: false, reject_oa_per_kg: null }
+    const { error } = await supabase.from('fleet_deliveries').update(patch).eq('id', d.id)
+    if (error) return show(error.message, true)
+    setRows(rs => rs.map(r => r.id === d.id ? { ...r, ...patch } : r))
+  }
+  const [closing, setClosing] = useState(null)   // final quantity being entered for an open-ended contract
+  async function closeContract() {
+    const q = num(closing)
+    if (!q || q <= 0) return show('Isi kuantitas akhir kontrak.', true)
+    const { error } = await supabase.from('fleet_contracts').update({ quantity_kg: q }).eq('id', id)
+    if (error) return show(error.message, true)
+    setC(x => ({ ...x, quantity_kg: q })); setClosing(null); show('Kuantitas kontrak disimpan.')
+  }
   const overTol = c && c.susut_tolerance != null && totals.muatan > 0 && (totals.susut / totals.muatan) > Number(c.susut_tolerance)
 
   function setCell(did, field, value) {
@@ -98,12 +129,30 @@ export default function FleetContractDetail() {
       </div>
       <div className="content">
         <div className="metrics">
-          <div className="metric"><div className="k">Contracted</div><div className="v" style={{ fontSize: 18 }}>{kg(c.quantity_kg)}</div></div>
+          <div className="metric"><div className="k">Contracted</div><div className="v" style={{ fontSize: 18 }}>{qtyKnown(c) ? kg(c.quantity_kg) : 'Terbuka'}</div></div>
           <div className="metric"><div className="k">Loaded (real)</div><div className="v" style={{ fontSize: 18 }}>{kg(totals.muatan)}</div></div>
-          <div className="metric"><div className="k">Outstanding</div><div className="v" style={{ fontSize: 18 }}>{kg(totals.outstanding)}</div></div>
-          <div className="metric"><div className="k">Deliveries</div><div className="v" style={{ fontSize: 18 }}>{rows.length}</div></div>
+          {totals.over > 0
+            ? <div className="metric"><div className="k">Lebih dari kontrak</div><div className="v" style={{ fontSize: 18, color: 'var(--urgent)' }}>{kg(totals.over)}</div></div>
+            : <div className="metric"><div className="k">Outstanding</div><div className="v" style={{ fontSize: 18 }}>{qtyKnown(c) ? kg(totals.outstanding) : '—'}</div></div>}
+          <div className="metric"><div className="k">Deliveries</div><div className="v" style={{ fontSize: 18 }}>{rows.length - totals.rejects}{totals.rejects > 0 && <span className="ct-rej-n"> + {totals.rejects} reject</span>}</div></div>
+          <div className="metric"><div className="k">Tagihan OA{c.oa_per_kg ? ` · Rp ${Number(c.oa_per_kg).toLocaleString('id-ID')}/kg ${c.billing_basis === 'muatan' ? 'muatan' : 'bongkar'}` : ''}</div>
+            <div className="v" style={{ fontSize: 18 }}>{c.oa_per_kg ? rp(Math.round(totals.tagihan)) : <span className="ct-open">Isi ongkos angkut (Edit)</span>}</div></div>
           <div className="metric"><div className="k">Total Claim Susut</div><div className="v" style={{ fontSize: 18, color: totals.claim > 0 ? 'var(--urgent)' : undefined }}>{kg(totals.claim)}</div></div>
         </div>
+
+        {!qtyKnown(c) && (
+          <div className="banner ct-open-banner">
+            <b>Kontrak terbuka</b> — kuantitas belum diketahui. Setelah kontrak selesai, isi kuantitas akhirnya sesuai tagihan.
+            {closing === null
+              ? <button className="btn primary sm" onClick={() => setClosing(String(totals.muatan || ''))}>Tutup kontrak</button>
+              : (<span className="ct-close">
+                  <NumInput value={closing} onChange={setClosing} onCommit={setClosing} placeholder="kuantitas akhir (kg)" />
+                  <button className="btn primary sm" onClick={closeContract}>Simpan</button>
+                  <button className="btn ghost sm" onClick={() => setClosing(null)}>Batal</button>
+                  {totals.noLoad > 0 && <span className="ct-close-warn">{totals.noLoad} baris belum ada muatan</span>}
+                </span>)}
+          </div>
+        )}
 
         <div className="dk-wrap">
           <table className="dk-tbl">
@@ -120,15 +169,16 @@ export default function FleetContractDetail() {
                 <th style={{ width: 100 }}>Bongkar</th>
                 <th style={{ width: 90 }}>Susut</th>
                 <th style={{ width: 100 }}>Claim susut</th>
-                <th style={{ width: 240 }}></th>
+                <th style={{ width: 120 }}>Tagihan</th>
+                <th style={{ width: 280 }}></th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={12} style={{ padding: 20, textAlign: 'center', color: 'var(--muted)' }}>No deliveries yet — add a row below.</td></tr>
+                <tr><td colSpan={13} style={{ padding: 20, textAlign: 'center', color: 'var(--muted)' }}>No deliveries yet — add a row below.</td></tr>
               )}
               {rows.map(d => {
-                const s = (d.muatan != null && d.muatan !== '' && d.bongkar != null && d.bongkar !== '') ? Number(d.muatan) - Number(d.bongkar) : null
+                const s = (!d.is_reject && d.muatan != null && d.muatan !== '' && d.bongkar != null && d.bongkar !== '') ? Number(d.muatan) - Number(d.bongkar) : null
                 const rowOver = c.susut_tolerance != null && d.muatan > 0 && s != null && (s / Number(d.muatan)) > Number(c.susut_tolerance)
                 // A part shares date / truck / driver with its slip; those are edited on the slip.
                 const isPart = !!d.parent_id
@@ -136,7 +186,7 @@ export default function FleetContractDetail() {
                 const others = d.parts || []
                 const lockTip = isPart ? `Ikut slip utama${main?.contract?.control_no ? ` (kontrak ${main.contract.control_no})` : ''}` : undefined
                 return (
-                  <tr key={d.id} className={isPart ? 'slip-part' : ''}>
+                  <tr key={d.id} className={[isPart ? 'slip-part' : '', d.is_reject ? 'row-reject' : ''].join(' ').trim()}>
                     <td><input value={d.do_no ?? ''} onChange={e => setCell(d.id, 'do_no', e.target.value)} onBlur={e => saveField(d.id, 'do_no', e.target.value)} /></td>
                     <td><input type="date" disabled={isPart} title={lockTip} value={d.tanggal || ''} onChange={e => setCell(d.id, 'tanggal', e.target.value)} onBlur={e => saveField(d.id, 'tanggal', e.target.value)} /></td>
                     <td>
@@ -164,7 +214,15 @@ export default function FleetContractDetail() {
                       const claim = Math.max(s - tol * Number(d.muatan), 0)
                       return claim > 0 ? fmtId(claim) : '0'
                     })()}</td>
+                    <td className="dk-susut" title={d.is_reject ? `Reject: ${fmtId(d.muatan || 0)} kg × (OA ${fmtId(c.oa_per_kg || 0)} + kembali ${fmtId(d.reject_oa_per_kg || 0)})` : undefined}>{c.oa_per_kg ? fmtId(Math.round(tagihanOf(c, d))) : '—'}</td>
                     <td className="dk-actions">
+                      {!isPart && (d.is_reject
+                        ? (<span className="rej-box">
+                            <span className="rej-badge" title="Ditolak dan kembali ke asal: tidak dihitung sebagai muatan kontrak">Reject</span>
+                            <NumInput className="rej-oa" value={d.reject_oa_per_kg} placeholder="OA kembali" onChange={n => setCell(d.id, 'reject_oa_per_kg', n)} onCommit={n => saveField(d.id, 'reject_oa_per_kg', n)} />
+                            <button className="btn ghost sm" title="Batalkan reject" onClick={() => setReject(d, false)}>Batal</button>
+                          </span>)
+                        : <button className="btn ghost sm rej-btn" title="Muatan ditolak dan kembali ke asal" onClick={() => setReject(d, true)}>Reject</button>)}
                       <button className="btn ghost sm void-btn" onClick={() => {
                         const msg = isPart ? 'Remove this contract part from its slip?'
                           : others.length ? `Remove this delivery? It is a slip that also carries ${others.map(o => o.contract?.control_no || '—').join(', ')} — that part and its recorded muatan/bongkar are removed too.`
