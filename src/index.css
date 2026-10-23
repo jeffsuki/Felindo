@@ -749,3 +749,10 @@ tr.row-reject td input, tr.row-reject td select { color: var(--muted); }
 /* sortable column headers (daftar kontrol, contracts list) */
 .dk-tbl th.sortable, .ct-tbl th.sortable { cursor: pointer; user-select: none; }
 .dk-tbl th.sortable:hover, .ct-tbl th.sortable:hover { color: var(--text); }
+
+/* uang tembak release date */
+.rel-date { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.rel-date input { width: auto; }
+.rel-date-warn { margin-top: 10px; color: var(--urgent); font-size: 12.5px; }
+.rel-redate { display: inline-flex; align-items: center; gap: 6px; }
+.rel-redate input { width: auto; padding: 4px 6px; }

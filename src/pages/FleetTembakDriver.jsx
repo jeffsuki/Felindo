@@ -24,6 +24,17 @@ const qualifies = t => {
   return q.every(Boolean)
 }
 const routeOf = t => tripRoute(t)
+// today in local time (toISOString alone gives the UTC date, a day behind before 07:00 WIB)
+const todayLocal = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10) }
+// Uang tembak is never paid before the trip is done: the latest bongkar date of the load (or the slip date when not known yet).
+const doneOf = t => legsOf(t).map(r => r.tanggal_bongkar).filter(Boolean).sort().pop() || t.tanggal
+function releaseDateProblem(date, trips) {
+  if (!date) return 'Pilih tanggal release.'
+  if (date > todayLocal()) return 'Tanggal release tidak boleh setelah hari ini.'
+  const early = trips.filter(t => doneOf(t) && date < doneOf(t))
+  if (early.length) return `Uang tembak tidak boleh dibayar sebelum trip selesai: ${early.slice(0, 3).map(t => `${fmtDate(t.tanggal)} (bongkar ${fmtDate(doneOf(t))})`).join(', ')}${early.length > 3 ? ` dan ${early.length - 3} lagi` : ''}.`
+  return null
+}
 
 export default function FleetTembakDriver() {
   const { name } = useParams()
@@ -43,7 +54,7 @@ export default function FleetTembakDriver() {
     setLoading(true)
     const [dl, rl] = await Promise.all([
       supabase.from('fleet_deliveries')
-        .select('id,parent_id,do_no,tanggal,plate,driver_name,muatan,bongkar,tembak_amount,tembak_potongan,tembak_jenis_potongan,tembak_released,tembak_released_date,tembak_release_id,rute,contract:fleet_contracts(control_no,origin,destination,susut_tolerance)')
+        .select('id,parent_id,do_no,tanggal,tanggal_bongkar,plate,driver_name,muatan,bongkar,tembak_amount,tembak_potongan,tembak_jenis_potongan,tembak_released,tembak_released_date,tembak_release_id,rute,contract:fleet_contracts(control_no,origin,destination,susut_tolerance)')
         .eq('driver_name', driver).eq('is_retur', false).order('tanggal', { ascending: false, nullsFirst: false }),
       supabase.from('tembak_releases').select('*').eq('driver_name', driver).order('release_no', { ascending: false }),
     ])
@@ -65,18 +76,30 @@ export default function FleetTembakDriver() {
     if (!chosen.length) return show('Select at least one ready trip.', true)
     setReleasing(chosen)
   }
-  async function confirmRelease(fills) {
-    const today = new Date().toISOString().slice(0, 10)
-    const { data: batch, error } = await supabase.from('tembak_releases').insert({ driver_name: driver, released_date: today }).select('id,release_no,code').single()
+  async function confirmRelease(fills, date) {
+    const bad = releaseDateProblem(date, releasing || [])
+    if (bad) return show(bad, true)
+    const { data: batch, error } = await supabase.from('tembak_releases').insert({ driver_name: driver, released_date: date }).select('id,release_no,code').single()
     if (error) return show(error.message, true)
     for (const f of fills) {
       const { error: e2 } = await supabase.from('fleet_deliveries').update({
-        tembak_released: true, tembak_released_date: today, tembak_release_id: batch.id,
+        tembak_released: true, tembak_released_date: date, tembak_release_id: batch.id,
         tembak_amount: num(f.uang), tembak_potongan: num(f.potongan), tembak_jenis_potongan: f.jenis || null,
       }).eq('id', f.id)
       if (e2) return show(e2.message, true)
     }
     show(`Released ${fills.length} uang tembak (${batch.code || '#' + batch.release_no}).`); setReleasing(null); setSel(new Set()); load()
+  }
+  // change the date of a release already made: the batch and every trip in it
+  const [redate, setRedate] = useState(null)   // { id, date }
+  async function saveRedate(b) {
+    const bad = releaseDateProblem(redate?.date, b.trips)
+    if (bad) return show(bad, true)
+    const { error } = await supabase.from('tembak_releases').update({ released_date: redate.date }).eq('id', b.id)
+    if (error) return show(error.message, true)
+    const { error: e2 } = await supabase.from('fleet_deliveries').update({ tembak_released_date: redate.date }).eq('tembak_release_id', b.id)
+    if (e2) return show(e2.message, true)
+    show(`Tanggal ${b.code || '#' + b.release_no} diubah ke ${fmtDate(redate.date)}.`); setRedate(null); load()
   }
   async function undo(id) {
     const { error } = await supabase.from('fleet_deliveries').update({ tembak_released: false, tembak_released_date: null, tembak_release_id: null }).eq('id', id)
@@ -140,6 +163,13 @@ export default function FleetTembakDriver() {
                     <div className="crow-head" style={{ cursor: 'default' }}>
                       <span className="fc-ctrl" style={{ fontSize: 12 }}>{b.code || '#' + b.release_no}</span>
                       <div className="crow-desc"><div className="d">{fmtDate(b.released_date)}</div><div className="m">{b.trips.length} trip{b.trips.length === 1 ? '' : 's'} · total sisa {rp(total)}</div></div>
+                      {redate?.id === b.id
+                        ? (<span className="rel-redate">
+                            <input type="date" value={redate.date} max={todayLocal()} onChange={e => setRedate({ id: b.id, date: e.target.value })} />
+                            <button className="btn primary sm" onClick={() => saveRedate(b)}>Simpan</button>
+                            <button className="btn ghost sm" onClick={() => setRedate(null)}>Batal</button>
+                          </span>)
+                        : <button className="btn ghost sm" onClick={() => setRedate({ id: b.id, date: b.released_date })}>Ubah tanggal</button>}
                       <button className="btn ghost sm" onClick={() => setPrintBatch(b)}>Print</button>
                     </div>
                     <div className="crow-detail">
@@ -177,6 +207,8 @@ export default function FleetTembakDriver() {
 }
 
 function ReleaseTable({ trips, onConfirm, onCancel }) {
+  const [date, setDate] = useState(todayLocal())
+  const problem = releaseDateProblem(date, trips)
   const [f, setF] = useState(() => Object.fromEntries(trips.map(d => [d.id, { uang: d.tembak_amount ?? '', potongan: d.tembak_potongan ?? '', jenis: d.tembak_jenis_potongan || '' }])))
   const set = (id, k, v) => setF(s => ({ ...s, [id]: { ...s[id], [k]: v } }))
   const totalSisa = trips.reduce((a, d) => a + (num(f[d.id]?.uang) - num(f[d.id]?.potongan)), 0)
@@ -204,10 +236,12 @@ function ReleaseTable({ trips, onConfirm, onCancel }) {
             </tbody>
           </table>
         </div>
+        {problem && date && <div className="rel-date-warn">{problem}</div>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}>
           <span style={{ fontWeight: 700 }}>Total Sisa: {rp(totalSisa)}</span>
+          <label className="rel-date">Tanggal release <input type="date" value={date} max={todayLocal()} onChange={e => setDate(e.target.value)} /></label>
           <div className="btn-group" style={{ marginLeft: 'auto' }}>
-            <button className="btn primary" onClick={() => onConfirm(trips.map(d => ({ id: d.id, ...f[d.id] })))}>Confirm release</button>
+            <button className="btn primary" disabled={!!problem} title={problem || undefined} onClick={() => onConfirm(trips.map(d => ({ id: d.id, ...f[d.id] })), date)}>Confirm release</button>
             <button className="btn ghost" onClick={onCancel}>Cancel</button>
           </div>
         </div>
