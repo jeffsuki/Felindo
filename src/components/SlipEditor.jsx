@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 const num = v => (v === null || v === undefined || v === '') ? null : Number(v)
-const rp = n => (n === null || n === undefined || n === '') ? 'Rp 0' : 'Rp ' + Number(n).toLocaleString()
+const rp = n => (n === null || n === undefined || n === '') ? 'Rp 0' : 'Rp ' + Math.round(Number(n)).toLocaleString('id-ID')
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 
 // Editable Slip Uang Jalan: fill the financials, save, and print.

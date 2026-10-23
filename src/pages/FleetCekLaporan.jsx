@@ -9,6 +9,7 @@ import { Spinner, Empty, useToast } from '../components/ui'
 // Temporary: for checking the imported data against the Excel. The Daily Report stays the real report.
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
 const nf = n => (n === null || n === undefined || n === '' || Number(n) === 0) ? '' : Number(n).toLocaleString('id-ID')
+const nm = n => (n === null || n === undefined || n === '' || Math.round(Number(n)) === 0) ? '' : Math.round(Number(n)).toLocaleString('id-ID')   // money: whole rupiah
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
 const addMonths = (m, n) => { const t = Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)) - 1 + n; return `${Math.floor(t / 12)}-${String(t % 12 + 1).padStart(2, '0')}` }
@@ -142,13 +143,13 @@ export default function FleetCekLaporan() {
                   {days.map(x => (
                     <tr key={x.d} className={'clickrow' + (x.d === day ? ' ck-on' : '')} onClick={() => setDay(x.d)}>
                       <td>{fmtDay(x.d)}</td><td className="r mono">{x.n || ''}</td><td className="r mono">{x.nt || ''}</td>
-                      <td className="r mono">{nf(x.total.borongan)}</td><td className="r mono" style={{ fontWeight: 700 }}>{nf(x.total.sisa) || '0'}</td>
-                      <td className="r mono muted">{nf(x.ujSisa)}</td><td className="r mono muted">{nf(x.tbSisa)}</td>
+                      <td className="r mono">{nm(x.total.borongan)}</td><td className="r mono" style={{ fontWeight: 700 }}>{nm(x.total.sisa) || '0'}</td>
+                      <td className="r mono muted">{nm(x.ujSisa)}</td><td className="r mono muted">{nm(x.tbSisa)}</td>
                     </tr>
                   ))}
                   <tr className="lb-total">
                     <td>Total {label}</td><td className="r mono">{M.n}</td><td className="r mono">{M.nt}</td>
-                    <td className="r mono">{nf(M.bor)}</td><td className="r mono">{nf(M.sisa)}</td><td className="r mono">{nf(M.uj)}</td><td className="r mono">{nf(M.tb)}</td>
+                    <td className="r mono">{nm(M.bor)}</td><td className="r mono">{nm(M.sisa)}</td><td className="r mono">{nm(M.uj)}</td><td className="r mono">{nm(M.tb)}</td>
                   </tr>
                 </tbody>
               </table></div>
@@ -188,17 +189,17 @@ export default function FleetCekLaporan() {
                       {sel.tembak.map((l, i) => <Line key={l.id} l={l} no={i + 1} />)}
                     </>}
                     <tr className="lb-total">
-                      <td colSpan={3}>Total</td><td className="r mono">{nf(sel.total.tonase)}</td><td className="r mono">{nf(sel.total.borongan)}</td>
-                      <td className="r mono">{nf(sel.total.ltr)}</td><td></td><td className="r mono">{nf(sel.total.tbbm)}</td>
-                      <td className="r mono">{nf(sel.total.susut)}</td><td className="r mono">{nf(sel.total.pm)}</td><td className="r mono">{nf(sel.total.lain)}</td>
-                      <td className="r mono">{nf(sel.total.sisa) || '0'}</td><td></td>
+                      <td colSpan={3}>Total</td><td className="r mono">{nf(sel.total.tonase)}</td><td className="r mono">{nm(sel.total.borongan)}</td>
+                      <td className="r mono">{nf(sel.total.ltr)}</td><td></td><td className="r mono">{nm(sel.total.tbbm)}</td>
+                      <td className="r mono">{nm(sel.total.susut)}</td><td className="r mono">{nm(sel.total.pm)}</td><td className="r mono">{nm(sel.total.lain)}</td>
+                      <td className="r mono">{nm(sel.total.sisa) || '0'}</td><td></td>
                     </tr>
                   </tbody>
                 </table></div>
                 <div className="rep-total" style={{ marginTop: 18 }}>
-                  <div><span>Uang jalan (sisa) · {sel.n} slip</span><b>Rp {Number(sel.ujSisa).toLocaleString('id-ID')}</b></div>
-                  <div><span>Uang tembak · {sel.nt}</span><b>Rp {Number(sel.tbSisa).toLocaleString('id-ID')}</b></div>
-                  <div className="grand"><span>Total Sisa (cocokkan dengan Excel)</span><b>Rp {Number(sel.total.sisa).toLocaleString('id-ID')}</b></div>
+                  <div><span>Uang jalan (sisa) · {sel.n} slip</span><b>Rp {Math.round(Number(sel.ujSisa)).toLocaleString('id-ID')}</b></div>
+                  <div><span>Uang tembak · {sel.nt}</span><b>Rp {Math.round(Number(sel.tbSisa)).toLocaleString('id-ID')}</b></div>
+                  <div className="grand"><span>Total Sisa (cocokkan dengan Excel)</span><b>Rp {Math.round(Number(sel.total.sisa)).toLocaleString('id-ID')}</b></div>
                 </div>
               </div>
             )}
@@ -215,10 +216,10 @@ function Line({ l, no }) {
   return (
     <tr className={sub ? 'ck-sub' : l.kind === 'tembak' ? 'ck-tembak' : ''}>
       <td>{no ?? ''}</td><td className="mono nowrap">{sub ? '' : (l.plate || '—')}</td><td>{sub ? l.driver : (l.driver || '—')}</td>
-      <td className="r mono">{nf(l.tonase)}</td><td className="r mono">{nf(l.borongan)}</td>
-      <td className="r mono">{nf(l.ltr)}</td><td className="r mono">{nf(l.bbml)}</td><td className="r mono">{nf(l.tbbm)}</td>
-      <td className="r mono">{nf(l.susut)}</td><td className="r mono">{nf(l.pm)}</td><td className="r mono">{nf(l.lain)}</td>
-      <td className="r mono">{l.kind === 'sub' && l.sisa === 0 ? '0' : nf(l.sisa)}</td><td>{l.ket || ''}{l.cek ? <span className="ck-cek" title={l.cek}> ⚠ perlu dicek</span> : null}</td>
+      <td className="r mono">{nf(l.tonase)}</td><td className="r mono">{nm(l.borongan)}</td>
+      <td className="r mono">{nf(l.ltr)}</td><td className="r mono">{nm(l.bbml)}</td><td className="r mono">{nm(l.tbbm)}</td>
+      <td className="r mono">{nm(l.susut)}</td><td className="r mono">{nm(l.pm)}</td><td className="r mono">{nm(l.lain)}</td>
+      <td className="r mono">{l.kind === 'sub' && l.sisa === 0 ? '0' : nm(l.sisa)}</td><td>{l.ket || ''}{l.cek ? <span className="ck-cek" title={l.cek}> ⚠ perlu dicek</span> : null}</td>
     </tr>
   )
 }

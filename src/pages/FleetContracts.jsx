@@ -120,7 +120,7 @@ export default function FleetContracts() {
                       <td>{c.origin || '—'}</td>
                       <td>{c.destination || '—'}</td>
                       <td className="r mono">{outstandingCell(c, t)}</td>
-                      <td className="r mono">{t.tagihan === null || t.tagihan === undefined ? '—' : 'Rp ' + Number(t.tagihan).toLocaleString('id-ID')}{Number(t.rejects || 0) > 0 && <div className="ct-sub">{t.rejects} reject</div>}</td>
+                      <td className="r mono">{t.tagihan === null || t.tagihan === undefined ? '—' : 'Rp ' + Math.round(Number(t.tagihan)).toLocaleString('id-ID')}{Number(t.rejects || 0) > 0 && <div className="ct-sub">{t.rejects} reject</div>}</td>
                       <td className="r mono" style={claim > 0 ? { color: 'var(--urgent)', fontWeight: 700 } : {}}>{kg(t.total_claim)}</td>
                       <td><Badge tone={STATUS_TONE[st]}>{STATUS_LABEL[st]}</Badge></td>
                       <td className="dk-actions">

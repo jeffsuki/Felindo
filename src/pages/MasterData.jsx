@@ -16,7 +16,7 @@ const ENTITIES = {
     columns: 'id,code,plate,model,fleet_division,capacity_kg,status',
     statusSet: STATUS.truck,
     name: r => r.plate,
-    sub: r => [r.fleet_division, r.model, r.capacity_kg ? `${Number(r.capacity_kg).toLocaleString()} kg` : ''].filter(Boolean).join(' · '),
+    sub: r => [r.fleet_division, r.model, r.capacity_kg ? `${Number(r.capacity_kg).toLocaleString('id-ID')} kg` : ''].filter(Boolean).join(' · '),
     search: r => `${r.code} ${r.plate} ${r.model || ''} ${r.fleet_division || ''}`,
     fields: [
       { key: 'plate', label: 'Plate', type: 'text', required: true },

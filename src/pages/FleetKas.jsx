@@ -5,8 +5,8 @@ import { Spinner, Empty, useToast } from '../components/ui'
 // Laporan Kas — cash per day from the fleet: uang jalan given (sisa of the slips of that day), uang tembak paid,
 // and retur (uang jalan a driver brought back because the trip did not happen, on the day it came back).
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
-const nf = n => (n === null || n === undefined || Number(n) === 0) ? '' : Number(n).toLocaleString('id-ID')
-const rp = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
+const nf = n => (n === null || n === undefined || Math.round(Number(n)) === 0) ? '' : Math.round(Number(n)).toLocaleString('id-ID')   // money: whole rupiah
+const rp = n => 'Rp ' + Math.round(Number(n || 0)).toLocaleString('id-ID')
 const ujNet = d => num(d.borongan) - num(d.selisih_bbm) - num(d.potongan_pihak) - num(d.bbm_rupiah) - (num(d.potongan_susut) + num(d.potongan_ban) + num(d.potongan_sparepart) + num(d.potongan_lain) + num(d.potongan_pm) + num(d.potongan_kasbon)) + num(d.tambahan_cuci) + num(d.tambahan_steam) + num(d.tambahan_tol) + num(d.tambahan_bantuan)
 const tbNet = d => num(d.tembak_amount) - num(d.tembak_potongan)
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']

@@ -5,10 +5,10 @@ import { Spinner, Empty, useToast } from '../components/ui'
 import { NumInput } from '../components/NumInput'
 import SearchSelect from '../components/SearchSelect'
 
-const rp = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
+const rp = n => 'Rp ' + Math.round(Number(n || 0)).toLocaleString('id-ID')
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
 const claimKg = d => { const tol = d.contract?.susut_tolerance; if (tol == null || d.muatan == null || d.bongkar == null) return 0; return Math.max((Number(d.muatan) - Number(d.bongkar)) - Number(tol) * Number(d.muatan), 0) }
-const claimRp = d => claimKg(d) * num(d.contract?.price_per_kg)
+const claimRp = d => Math.round(claimKg(d) * num(d.contract?.price_per_kg))   // whole rupiah
 
 const TABS = [['ringkasan', 'Hutang Supir'], ['susut', 'Susut'], ['sparepart', 'Spare Part'], ['ban', 'Ban'], ['kasbon', 'Kasbon'], ['bbm', 'BBM (L)']]
 

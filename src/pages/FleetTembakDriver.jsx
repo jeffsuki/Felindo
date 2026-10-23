@@ -6,7 +6,7 @@ import { NumInput } from '../components/NumInput'
 import { groupTrips, legsOf, tripReady, tripSum, tripSusut, tripRoute } from '../lib/trips'
 
 const JENIS = ['Susut', 'Ganti Ban', 'Ganti Spare Part', 'Lainnya']
-const rp = n => (n === null || n === undefined || n === '') ? 'Rp 0' : 'Rp ' + Number(n).toLocaleString('id-ID')
+const rp = n => (n === null || n === undefined || n === '') ? 'Rp 0' : 'Rp ' + Math.round(Number(n)).toLocaleString('id-ID')
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const susutOf = d => (d.muatan != null && d.bongkar != null) ? Number(d.muatan) - Number(d.bongkar) : null
@@ -114,8 +114,8 @@ export default function FleetTembakDriver() {
                           <td>{r1 && <input type="checkbox" checked={sel.has(d.id)} onChange={() => toggleSel(d.id)} />}</td>
                           <td>{fmtDate(d.tanggal)}</td><td className="mono">{d.plate || '—'}</td>
                           <td>{routeOf(d)}{d.parts.length ? <span className="part-badge">{d.parts.length + 1} kontrak</span> : null}</td>
-                          <td className="r mono">{kg != null ? kg.toLocaleString() : '—'}</td>
-                          <td className="r mono">{s != null ? s.toLocaleString() : '—'}</td>
+                          <td className="r mono">{kg != null ? kg.toLocaleString('id-ID') : '—'}</td>
+                          <td className="r mono">{s != null ? s.toLocaleString('id-ID') : '—'}</td>
                           <td>{q == null ? '—' : q ? <Badge tone="ok">Yes</Badge> : <Badge tone="urgent">No</Badge>}</td>
                           <td>{r1 ? <Badge tone="accent">Ready</Badge> : <Badge tone="muted">Pending</Badge>}</td>
                         </tr>

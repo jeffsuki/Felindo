@@ -8,7 +8,7 @@ import { groupTrips } from '../lib/trips'
 
 const num = v => (v === null || v === undefined || v === '') ? null : Number(v)
 const JENIS_POT = ['Susut', 'Ganti Ban', 'Ganti Spare Part', 'Lainnya']
-const rp = n => (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString('id-ID')
+const rp = n => (n === null || n === undefined || n === '') ? '' : Math.round(Number(n)).toLocaleString('id-ID')
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const potTotal = d => Number(d.potongan_susut || 0) + Number(d.potongan_ban || 0) + Number(d.potongan_sparepart || 0) + Number(d.potongan_lain || 0) + Number(d.potongan_pm || 0) + Number(d.potongan_kasbon || 0)
 const netOf = d => Number(d.borongan || 0) - Number(d.selisih_bbm || 0) - Number(d.potongan_pihak || 0) - Number(d.bbm_rupiah || 0) - potTotal(d)
@@ -192,8 +192,8 @@ export default function FleetSlips() {
   async function saveRetur(d) {
     const amt = netOf(d), today = localToday()
     const msg = d.is_retur
-      ? `Uang retur Rp ${amt.toLocaleString('id-ID')} sudah kembali hari ini (${fmtDate(today)})?`
-      : `Retur: uang jalan Rp ${amt.toLocaleString('id-ID')} dikembalikan hari ini (${fmtDate(today)})?\n\nSlip tetap di laporan borongan, tapi keluar dari daftar kontrol ${d.contract?.control_no || ''}${d.do_no != null ? ` (DO ${d.do_no} dihapus)` : ''}.`
+      ? `Uang retur Rp ${rp(amt)} sudah kembali hari ini (${fmtDate(today)})?`
+      : `Retur: uang jalan Rp ${rp(amt)} dikembalikan hari ini (${fmtDate(today)})?\n\nSlip tetap di laporan borongan, tapi keluar dari daftar kontrol ${d.contract?.control_no || ''}${d.do_no != null ? ` (DO ${d.do_no} dihapus)` : ''}.`
     if (!confirm(msg)) return
     const patch = { is_retur: true, retur_date: today, retur_amount: amt, do_no: null }
     const { error } = await supabase.from('fleet_deliveries').update(patch).eq('id', d.id)
@@ -330,7 +330,7 @@ export default function FleetSlips() {
           <Empty title="No slips">{sq ? `No slips match “${sq}”.` : `No slips in ${monthLabel(month)} — pick another month above, or create one with “+ New slip”.`}</Empty>
         ) : (
           <>
-            <div className="hist-count">{sq ? `Search “${sq}”, all months: ` : flagged ? 'Perlu dicek, semua bulan: ' : `${monthLabel(month)}: `}{visible.length} slip{visible.length === 1 ? '' : 's'}{sq && slips.length >= SEARCH_LIMIT ? ` (latest ${SEARCH_LIMIT} — type more to narrow it down)` : ''} · total net Rp {total.toLocaleString()}</div>
+            <div className="hist-count">{sq ? `Search “${sq}”, all months: ` : flagged ? 'Perlu dicek, semua bulan: ' : `${monthLabel(month)}: `}{visible.length} slip{visible.length === 1 ? '' : 's'}{sq && slips.length >= SEARCH_LIMIT ? ` (latest ${SEARCH_LIMIT} — type more to narrow it down)` : ''} · total net Rp {rp(total) || '0'}</div>
             <div className="dk-wrap">
               <table className="dk-tbl slip-grid">
                 <thead>
@@ -352,7 +352,7 @@ export default function FleetSlips() {
                           <button className="btn ghost sm" onClick={() => setPrintId(d.id)}>Print</button>
                           <button className={'btn ghost sm' + (hasAdj(d) ? ' driver-on' : '')} disabled={locked} onClick={() => setAdjFor(d.id)}>Adj{hasAdj(d) ? ' ✓' : ''}</button>
                           {d.is_retur ? <>
-                            <span className="retur-chip" title={d.retur_amount != null ? `Rp ${Number(d.retur_amount).toLocaleString('id-ID')} dikembalikan` : 'Trip batal — uang belum kembali'}>Retur{d.retur_date ? ' ' + fmtDate(d.retur_date) : ' · belum kembali'}</span>
+                            <span className="retur-chip" title={d.retur_amount != null ? `Rp ${rp(d.retur_amount)} dikembalikan` : 'Trip batal — uang belum kembali'}>Retur{d.retur_date ? ' ' + fmtDate(d.retur_date) : ' · belum kembali'}</span>
                             {!d.retur_date && <button className="btn ghost sm" disabled={locked} title="Uang jalan sudah dikembalikan hari ini" onClick={() => saveRetur(d)}>Uang kembali</button>}
                             <button className="btn ghost sm" disabled={locked} onClick={() => cancelRetur(d)}>Batal retur</button>
                           </> : <>
@@ -379,7 +379,7 @@ export default function FleetSlips() {
                         <td><NumInput disabled={locked} value={d.borongan} onChange={n => setCell(d.id, 'borongan', n)} onCommit={n => saveField(d.id, 'borongan', n)} /></td>
                         <td><NumInput disabled={locked} value={d.bbm_liter} onChange={n => setCell(d.id, 'bbm_liter', n)} onCommit={n => saveBbm(d.id, 'bbm_liter', n)} /></td>
                         <td><NumInput disabled={locked} value={d.price_per_liter} onChange={n => setCell(d.id, 'price_per_liter', n)} onCommit={n => saveBbm(d.id, 'price_per_liter', n)} /></td>
-                        <td className="mono ro r">{totalBbm(d) ? fmtId(totalBbm(d)) : '—'}</td>
+                        <td className="mono ro r">{totalBbm(d) ? rp(totalBbm(d)) : '—'}</td>
                         <td><NumInput disabled={locked} value={d.potongan_susut} onChange={n => setCell(d.id, 'potongan_susut', n)} onCommit={n => saveField(d.id, 'potongan_susut', n)} /></td>
                         <td><NumInput disabled={locked} value={d.potongan_ban} onChange={n => setCell(d.id, 'potongan_ban', n)} onCommit={n => saveField(d.id, 'potongan_ban', n)} /></td>
                         <td><NumInput disabled={locked} value={d.potongan_sparepart} onChange={n => setCell(d.id, 'potongan_sparepart', n)} onCommit={n => saveField(d.id, 'potongan_sparepart', n)} /></td>
