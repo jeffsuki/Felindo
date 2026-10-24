@@ -3,7 +3,7 @@ import { supabase, isConfigured } from '../supabaseClient'
 import { Plate, Badge, Spinner, Empty, useToast } from '../components/ui'
 import SearchSelect from '../components/SearchSelect'
 import { VoidControl } from './Complaints'
-import { WO_STATUS, PRIORITY, nextActions, fmtDate } from '../lib/format'
+import { WO_STATUS, PRIORITY, nextActions, fmtDate, waitInfo } from '../lib/format'
 
 export default function Triage() {
   const { show, node } = useToast()
@@ -16,7 +16,7 @@ export default function Triage() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
     let cq = supabase.from('complaints')
-      .select('id,code,description,priority,duration_class,status,reported_at,reporter_name,truck:trucks(plate,fleet_division),driver:drivers(name),mechanic:mechanics(name),work_orders(id,code,status,description,helper_note,external_assignee,by_driver,started_at,done_at,voided,is_outsourced,sent_date,expected_back_date,waiting_reason,required_specialty_id,assigned_mechanic_id,vendor_id,specialty:specialties(label,name),mechanic:mechanics(name,code),vendor:vendors(name))')
+      .select('id,code,description,priority,duration_class,status,reported_at,reporter_name,truck:trucks(plate,fleet_division),driver:drivers(name),mechanic:mechanics(name),work_orders(id,code,status,description,helper_note,external_assignee,by_driver,started_at,done_at,voided,is_outsourced,sent_date,expected_back_date,waiting_reason,waiting_since,waiting_expected,required_specialty_id,assigned_mechanic_id,vendor_id,specialty:specialties(label,name),mechanic:mechanics(name,code),vendor:vendors(name))')
       .eq('voided', false)
       .order('reported_at', { ascending: true })
     if (cView === 'open') cq = cq.in('status', ['open', 'in_progress'])
@@ -192,6 +192,7 @@ function WorkOrderRow({ w, refs, onPatch, onFollowUp }) {
   const actions = nextActions(w.status)
   const [reassignTo, setReassignTo] = useState('')
   const [waitMode, setWaitMode] = useState(false)
+  const [waitBack, setWaitBack] = useState('')
   const [waitReason, setWaitReason] = useState('')
   const [extMode, setExtMode] = useState(false)
   const [extName, setExtName] = useState('')
@@ -218,7 +219,7 @@ function WorkOrderRow({ w, refs, onPatch, onFollowUp }) {
       : (w.external_assignee ? `${w.external_assignee} (external)` : 'Unassigned'))
 
   function saveWait() {
-    onPatch(w.id, { status: 'paused', waiting_reason: waitReason.trim() || null }, 'Set to waiting.')
+    onPatch(w.id, { status: 'paused', waiting_reason: waitReason.trim() || null, waiting_expected: waitBack || null }, 'Set to waiting.')
     setWaitMode(false); setWaitReason('')
   }
   function saveExternal() {
@@ -268,8 +269,7 @@ function WorkOrderRow({ w, refs, onPatch, onFollowUp }) {
         <div className="who" style={{ fontWeight: 600 }}>{w.description || w.specialty?.label || 'Work order'}</div>
         <div className="code">{assignee} · {w.specialty?.label || '—'} · {w.code}
           {w.is_outsourced && w.expected_back_date && <span> · back {w.expected_back_date}</span>}
-          {w.status === 'paused' && w.waiting_reason &&
-            <span style={{ color: '#7A5AA6' }}> · waiting: {w.waiting_reason}</span>}
+          {w.status === 'paused' && (() => { const wi = waitInfo(w.waiting_reason, w.waiting_expected); return wi && <span className={wi.overdue ? 'wait-note overdue' : 'wait-note'}> · waiting: {wi.text}{wi.overdue ? ' — telat' : ''}</span> })()}
           {w.helper_note && <span className="helper-inline"> · helped by {w.helper_note}</span>}
         </div>
         {waitMode && (
@@ -278,6 +278,8 @@ function WorkOrderRow({ w, refs, onPatch, onFollowUp }) {
               placeholder="Why is it waiting? (e.g. nunggu part dari Medan)"
               style={{ fontSize: 13, padding: '6px 9px' }}
               onKeyDown={e => e.key === 'Enter' && saveWait()} />
+            <label style={{ fontSize: 11, color: 'var(--muted)' }}>Kira-kira beres/kembali
+              <input type="date" value={waitBack} onChange={e => setWaitBack(e.target.value)} style={{ fontSize: 13, padding: '5px 7px' }} /></label>
             <button className="btn primary sm" onClick={saveWait}>Set waiting</button>
             <button className="btn ghost sm" onClick={() => { setWaitMode(false); setWaitReason('') }}>Cancel</button>
           </div>

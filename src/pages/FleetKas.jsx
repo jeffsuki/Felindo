@@ -20,7 +20,7 @@ export default function FleetKas() {
   const { show, node } = useToast()
   const [month, setMonth] = useState(thisMonth)
   const [loading, setLoading] = useState(true)
-  const [uj, setUj] = useState([]), [tb, setTb] = useState([]), [rt, setRt] = useState([])
+  const [uj, setUj] = useState([]), [tb, setTb] = useState([]), [rt, setRt] = useState([]), [ex, setEx] = useState([])
   const [open, setOpen] = useState(() => new Set())
 
   useEffect(() => {
@@ -34,26 +34,30 @@ export default function FleetKas() {
         .eq('tembak_released', true).gte('tembak_released_date', a).lt('tembak_released_date', z)),
       fetchAll(() => supabase.from('fleet_deliveries').select('id,tanggal,plate,driver_name,retur_date,retur_amount,rute,contract:fleet_contracts(control_no,origin,destination)')
         .eq('is_retur', true).gte('retur_date', a).lt('retur_date', z)),
-    ]).then(([x, y, w]) => {
+      fetchAll(() => supabase.from('fleet_extras').select('id,tanggal,amount,keterangan,beban,driver_name,delivery:fleet_deliveries(plate,driver_name,rute,contract:fleet_contracts(control_no,origin,destination))')
+        .gte('tanggal', a).lt('tanggal', z)),
+    ]).then(([x, y, w, v]) => {
       if (!live) return
-      const err = x.error || y.error || w.error
+      const err = x.error || y.error || w.error || v.error
       if (err) show(err.message, true)
-      setUj(x.data || []); setTb(y.data || []); setRt(w.data || []); setLoading(false); setOpen(new Set())
+      setUj(x.data || []); setTb(y.data || []); setRt(w.data || []); setEx(v.data || []); setLoading(false); setOpen(new Set())
     })
     return () => { live = false }
   }, [month])
 
   const days = useMemo(() => {
     const m = new Map()
-    const day = d => { if (!m.has(d)) m.set(d, { d, uj: [], tb: [], rt: [] }); return m.get(d) }
+    const day = d => { if (!m.has(d)) m.set(d, { d, uj: [], tb: [], rt: [], ex: [] }); return m.get(d) }
     uj.forEach(r => day(r.tanggal).uj.push(r))
     tb.forEach(r => day(r.tembak_released_date).tb.push(r))
     rt.forEach(r => day(r.retur_date).rt.push(r))
+    ex.forEach(r => day(r.tanggal).ex.push(r))
     return [...m.values()].sort((p, q) => p.d.localeCompare(q.d)).map(x => ({
-      ...x, ujSum: x.uj.reduce((s, r) => s + ujNet(r), 0), tbSum: x.tb.reduce((s, r) => s + tbNet(r), 0), rtSum: x.rt.reduce((s, r) => s + num(r.retur_amount), 0),
+      ...x, ujSum: x.uj.reduce((s, r) => s + ujNet(r), 0) + x.ex.reduce((s, r) => s + num(r.amount), 0),
+      tbSum: x.tb.reduce((s, r) => s + tbNet(r), 0), rtSum: x.rt.reduce((s, r) => s + num(r.retur_amount), 0),
     }))
-  }, [uj, tb, rt])
-  const T = days.reduce((s, x) => ({ uj: s.uj + x.ujSum, tb: s.tb + x.tbSum, rt: s.rt + x.rtSum, nuj: s.nuj + x.uj.length, ntb: s.ntb + x.tb.length, nrt: s.nrt + x.rt.length }),
+  }, [uj, tb, rt, ex])
+  const T = days.reduce((s, x) => ({ uj: s.uj + x.ujSum, tb: s.tb + x.tbSum, rt: s.rt + x.rtSum, nuj: s.nuj + x.uj.length + x.ex.length, ntb: s.ntb + x.tb.length, nrt: s.nrt + x.rt.length }),
     { uj: 0, tb: 0, rt: 0, nuj: 0, ntb: 0, nrt: 0 })
   const toggle = d => setOpen(s => { const n = new Set(s); n.has(d) ? n.delete(d) : n.add(d); return n })
   const route = r => r.contract ? `${r.contract.origin || '—'} → ${r.contract.destination || '—'}` : `${r.rute || '—'} (belum ada kontrak)`
@@ -86,7 +90,7 @@ export default function FleetKas() {
                   <Fragment key={x.d}>
                     <tr className="kas-day" onClick={() => toggle(x.d)}>
                       <td>{fmtDay(x.d)} <span className="lb-caret">{open.has(x.d) ? '▾' : '▸'}</span></td>
-                      <td className="r mono">{x.uj.length ? `${nf(x.ujSum)} (${x.uj.length})` : ''}</td>
+                      <td className="r mono">{x.uj.length + x.ex.length ? `${nf(x.ujSum)} (${x.uj.length + x.ex.length})` : ''}</td>
                       <td className="r mono">{x.tb.length ? `${nf(x.tbSum)} (${x.tb.length})` : ''}</td>
                       <td className="r mono kas-in">{x.rt.length ? `${nf(x.rtSum)} (${x.rt.length})` : ''}</td>
                       <td className="r mono" style={{ fontWeight: 700 }}>{nf(x.ujSum + x.tbSum - x.rtSum) || '0'}</td>
@@ -97,6 +101,13 @@ export default function FleetKas() {
                           <td>↳ Uang jalan · {r.plate || '—'} · {r.driver_name || '—'}</td>
                           <td className="r mono">{nf(ujNet(r))}</td><td></td><td></td>
                           <td>{route(r)}{r.contract?.control_no ? ` · ${r.contract.control_no}` : ''}{r.is_retur ? <span className="lb-retur"> · RETUR {fmtShort(r.retur_date)}</span> : ''}</td>
+                        </tr>
+                      ))}
+                      {x.ex.map(r => (
+                        <tr className="kas-detail" key={'x' + r.id}>
+                          <td>↳ Tambahan UJ · {r.delivery?.plate || '—'} · {r.driver_name || r.delivery?.driver_name || '—'}</td>
+                          <td className="r mono">{nf(r.amount)}</td><td></td><td></td>
+                          <td>{r.delivery?.contract ? `${r.delivery.contract.origin || '—'} → ${r.delivery.contract.destination || '—'} · ${r.delivery.contract.control_no || ''}` : (r.delivery?.rute || '—')}{r.beban === 'supir' ? ' · potong supir' : ''}{r.keterangan ? ` · ${r.keterangan}` : ''}</td>
                         </tr>
                       ))}
                       {x.tb.map(r => (

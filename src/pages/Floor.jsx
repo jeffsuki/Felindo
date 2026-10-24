@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Plate, Badge, Spinner, Empty, useToast } from '../components/ui'
-import { WO_STATUS, woTitle } from '../lib/format'
+import { WO_STATUS, woTitle, waitInfo } from '../lib/format'
 import TemuanBaru from '../components/TemuanBaru'
 
 // Lean "walk the floor and tick things off" screen: every active job grouped
@@ -93,8 +93,7 @@ export default function Floor() {
                         <span className="floor-spec" style={{ fontWeight: 600, color: 'var(--text)' }}>{woTitle(j)}</span>
                         <span className="floor-spec">{j.specialty || ''}</span>
                         <Badge tone={st.tone}>{st.label}</Badge>
-                        {j.wo_status === 'paused' && j.waiting_reason &&
-                          <span className="floor-reason">{j.waiting_reason}</span>}
+                        {j.wo_status === 'paused' && (() => { const wi = waitInfo(j.waiting_reason, j.waiting_expected); return wi && <span className={'floor-reason' + (wi.overdue ? ' overdue' : '')}>{wi.text}{wi.overdue ? ' — telat' : ''}</span> })()}
                       </div>
                       {waiting ? (
                         <div className="floor-wait">

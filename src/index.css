@@ -808,3 +808,29 @@ tr.row-reject td input, tr.row-reject td select { color: var(--muted); }
 .ambil-row:hover { background: #eef6f5; border-color: #0f766e; }
 .ambil-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ambil-take { font-size: 11.5px; color: #0f766e; font-weight: 600; }
+
+/* ---- waiting with dates (tunggu part) ---- */
+.wait-note { color: #7A5AA6; }
+.wait-note.overdue, .floor-reason.overdue { color: #C0392B; font-weight: 600; }
+
+/* ---- rincian ⋯ panel (oper / tambahan / susut klien) ---- */
+.dkx-row > td { background: #fbfaf7; border-top: none; padding: 10px 14px 12px; }
+.dkx { display: flex; flex-direction: column; gap: 10px; }
+.dkx-sec { display: flex; flex-direction: column; gap: 5px; }
+.dkx-h { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted, #888); }
+.dkx-line { display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+.dkx-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dkx-form select, .dkx-form input { font-size: 13px; padding: 5px 8px; width: auto; }
+.dkx-hint { font-size: 11.5px; color: var(--muted, #888); flex-basis: 100%; }
+.oper-badge { background: #fff3e0; border-color: #e8a94e; color: #8a5a00; }
+.waive-badge { background: #e8f5ee; border-color: #58a87c; color: #1f6b43; }
+.dkx { position: sticky; left: 14px; width: fit-content; max-width: 980px; }
+
+/* ---- bruto/tarra/netto stack in the rincian ---- */
+.wtr-stack { display: flex; flex-direction: column; gap: 2px; }
+.wtr { display: flex; align-items: center; gap: 4px; }
+.wtr > span { font-size: 9.5px; font-weight: 700; color: var(--muted, #999); width: 10px; text-align: center; }
+.wtr input { font-size: 12px; padding: 2px 6px; }
+.wtr-n input { font-weight: 700; }
+.wtr-n.off input { color: #C0392B; }
+.wtr-n.off > span { color: #C0392B; }

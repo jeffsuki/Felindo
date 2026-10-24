@@ -8,7 +8,7 @@ const rp = n => 'Rp ' + Math.round(Number(n || 0)).toLocaleString('id-ID')
 const L = n => Number(n || 0).toLocaleString('id-ID') + ' L'
 const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v)
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
-const claimKg = d => { const tol = d.contract?.susut_tolerance; if (tol == null || d.muatan == null || d.bongkar == null) return 0; return Math.max((Number(d.muatan) - Number(d.bongkar)) - Number(tol) * Number(d.muatan), 0) }
+const claimKg = d => { if (d.susut_waived || d.oper_truck_id) return 0; const tol = d.contract?.susut_tolerance; if (tol == null || d.muatan == null || d.bongkar == null) return 0; return Math.max((Number(d.muatan) - Number(d.bongkar)) - Number(tol) * Number(d.muatan), 0) }
 const claimRp = d => Math.round(claimKg(d) * num(d.contract?.price_per_kg))   // whole rupiah
 
 export default function FleetHutangDriver() {
@@ -20,6 +20,7 @@ export default function FleetHutangDriver() {
   const [claims, setClaims] = useState([])
   const [loans, setLoans] = useState([])
   const [repays, setRepays] = useState([])
+  const [extras, setExtras] = useState([])   // tambahan UJ dengan beban supir
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(null)      // claim: {jenis}
   const [loanAdd, setLoanAdd] = useState(null)    // loan: {jenis:'Cash'|'BBM'}
@@ -28,13 +29,14 @@ export default function FleetHutangDriver() {
   async function load() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
-    const [dl, cl, ln, rpm] = await Promise.all([
-      supabase.from('fleet_deliveries').select('id,tanggal,plate,muatan,bongkar,potongan_susut,potongan_ban,potongan_sparepart,potongan_kasbon,bbm_liter,price_per_liter,contract:fleet_contracts(origin,destination,susut_tolerance,price_per_kg)').eq('driver_name', driver),
+    const [dl, cl, ln, rpm, exq] = await Promise.all([
+      supabase.from('fleet_deliveries').select('id,tanggal,plate,muatan,bongkar,susut_waived,oper_truck_id,potongan_susut,potongan_ban,potongan_sparepart,potongan_kasbon,bbm_liter,price_per_liter,contract:fleet_contracts(origin,destination,susut_tolerance,price_per_kg)').eq('driver_name', driver),
       supabase.from('fleet_driver_claims').select('*').eq('driver_name', driver).order('tanggal', { ascending: false }),
       supabase.from('fleet_driver_loans').select('*').eq('driver_name', driver).order('tanggal', { ascending: false }),
       supabase.from('fleet_driver_loan_repayments').select('*').eq('driver_name', driver).order('tanggal', { ascending: false }),
+      supabase.from('fleet_extras').select('*, delivery:fleet_deliveries(plate)').eq('driver_name', driver).eq('beban', 'supir').order('tanggal', { ascending: false }),
     ])
-    setDels(dl.data || []); setClaims(cl.data || []); setLoans(ln.data || []); setRepays(rpm.data || []); setLoading(false)
+    setDels(dl.data || []); setClaims(cl.data || []); setLoans(ln.data || []); setRepays(rpm.data || []); setExtras(exq.data || []); setLoading(false)
   }
   useEffect(() => { load() }, [driver])
 
@@ -46,6 +48,7 @@ export default function FleetHutangDriver() {
     }
     for (const c of claims) { if (c.jenis === 'Ganti Ban') a.banC += num(c.amount); else if (c.jenis === 'Ganti Spare Part') a.spC += num(c.amount) }
     for (const l of loans) { if (l.jenis === 'Cash') a.kasbonC += num(l.amount); else if (l.jenis === 'BBM') a.bbmC += num(l.liter) }
+    for (const x of extras) a.kasbonC += num(x.amount)   // tambahan UJ beban supir = kasbon
     for (const r of repays) a.kasbonP += num(r.amount)
     // date-aware BBM outstanding: chronological running balance, floored at 0
     const ev = []
@@ -56,7 +59,7 @@ export default function FleetHutangDriver() {
     a.susut = a.susutC - a.susutP; a.ban = a.banC - a.banP; a.sp = a.spC - a.spP; a.kasbon = a.kasbonC - a.kasbonP; a.bbm = bbal
     a.total = a.susut + a.ban + a.sp + a.kasbon
     return a
-  }, [dels, claims, loans, repays])
+  }, [dels, claims, loans, repays, extras])
 
   async function addClaim(jenis, amount, tanggal, note) {
     const { error } = await supabase.from('fleet_driver_claims').insert({ driver_name: driver, jenis, amount: num(amount), tanggal: tanggal || null, note: note || null })
@@ -119,9 +122,12 @@ export default function FleetHutangDriver() {
 
         <Section title="Kasbon (Cash)" balance={rp(acc.kasbon)} pos={acc.kasbon > 0}>
           <div className="fd-sec">Dipinjam</div>
-          {cashLoans.length === 0 ? <div className="pool-hint">No loans.</div> : (
+          {cashLoans.length === 0 && extras.length === 0 ? <div className="pool-hint">No loans.</div> : (
             <table className="dk-tbl ct-tbl"><thead><tr><th>Date</th><th>Note</th><th className="r">Amount</th><th></th></tr></thead>
-              <tbody>{cashLoans.map(l => <tr key={l.id}><td>{fmtDate(l.tanggal)}</td><td>{l.note || '—'}</td><td className="r mono">{rp(l.amount)}</td><td><button className="btn ghost sm void-btn" onClick={() => { if (confirm('Delete loan?')) delRow('fleet_driver_loans', l.id) }}>✕</button></td></tr>)}</tbody></table>
+              <tbody>
+                {cashLoans.map(l => <tr key={l.id}><td>{fmtDate(l.tanggal)}</td><td>{l.note || '—'}</td><td className="r mono">{rp(l.amount)}</td><td><button className="btn ghost sm void-btn" onClick={() => { if (confirm('Delete loan?')) delRow('fleet_driver_loans', l.id) }}>✕</button></td></tr>)}
+                {extras.map(x => <tr key={x.id}><td>{fmtDate(x.tanggal)}</td><td>Tambahan UJ · {x.delivery?.plate || '—'}{x.keterangan ? ` — ${x.keterangan}` : ''}</td><td className="r mono">{rp(x.amount)}</td><td></td></tr>)}
+              </tbody></table>
           )}
           <button className="btn ghost sm" style={{ marginTop: 8 }} onClick={() => setLoanAdd({ jenis: 'Cash' })}>+ Add loan</button>
           <div className="fd-sec" style={{ marginTop: 12 }}>Dibayar</div>

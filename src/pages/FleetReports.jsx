@@ -83,6 +83,7 @@ export default function FleetReports() {
   const [date, setDate] = useState(todayIso)
   const [uj, setUj] = useState([])
   const [tb, setTb] = useState([])
+  const [ex, setEx] = useState([])   // tambahan uang jalan, booked on their own date
   const [loading, setLoading] = useState(false)
   const [openRows, setOpenRows] = useState(() => new Set())
   const toggleRow = id => setOpenRows(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -96,9 +97,10 @@ export default function FleetReports() {
       supabase.from('fleet_deliveries').select(sel).eq('tembak_released_date', date),
       // other contracts carried on the same slips (no money of their own)
       supabase.from('fleet_deliveries').select('id,parent_id,estimasi_muat,muatan,contract:fleet_contracts(control_no,origin,destination)').eq('tanggal', date).not('parent_id', 'is', null),
-    ]).then(([a, b, c]) => {
+      supabase.from('fleet_extras').select('id,tanggal,amount,keterangan,beban,driver_name,delivery:fleet_deliveries(plate,driver_name,contract:fleet_contracts(control_no,origin,destination))').eq('tanggal', date).order('created_at'),
+    ]).then(([a, b, c, x]) => {
       const parts = {}; (c.data || []).forEach(p => { (parts[p.parent_id] = parts[p.parent_id] || []).push(p) })
-      setUj((a.data || []).map(d => ({ ...d, parts: parts[d.id] || [] }))); setTb(b.data || []); setLoading(false)
+      setUj((a.data || []).map(d => ({ ...d, parts: parts[d.id] || [] }))); setTb(b.data || []); setEx(x.data || []); setLoading(false)
     })
   }, [date])
 
@@ -113,6 +115,7 @@ export default function FleetReports() {
     pot: a.pot + potOf(d), lain: a.lain + lainOf(d), sisa: a.sisa + ujNet(d),
   }), { tonase: 0, borongan: 0, peny: 0, ltr: 0, bbm: 0, pot: 0, lain: 0, sisa: 0 })
   const totalTb = tb.reduce((a, d) => a + tbNet(d), 0)
+  const totalEx = ex.reduce((a, x) => a + num(x.amount), 0)
 
   return (
     <>
@@ -126,7 +129,7 @@ export default function FleetReports() {
         </div>
       </div>
       <div className="content" style={{ maxWidth: 1200 }}>
-        {loading ? <Spinner /> : (uj.length === 0 && tb.length === 0) ? (
+        {loading ? <Spinner /> : (uj.length === 0 && tb.length === 0 && ex.length === 0) ? (
           <Empty title="Nothing on this day">No borongan or uang tembak for {fmtDay(date)}.</Empty>
         ) : (
           <div className="report-print">
@@ -208,10 +211,28 @@ export default function FleetReports() {
               </div>
             )}
 
+            {ex.length > 0 && (
+              <div style={{ marginTop: 30 }}>
+                <div className="rep-head"><div className="rep-title">TAMBAHAN UANG JALAN</div></div>
+                <div className="dk-wrap"><table className="lb-tbl">
+                  <thead><tr><th>No</th><th>BK</th><th>Penerima</th><th>Rute / Kontrak</th><th className="r">Jumlah</th><th>Beban</th><th>Keterangan</th></tr></thead>
+                  <tbody>
+                    {ex.map((x, i) => (
+                      <tr key={x.id}><td>{i + 1}</td><td className="mono">{x.delivery?.plate || '—'}</td><td>{x.driver_name || x.delivery?.driver_name || '—'}</td>
+                        <td>{x.delivery?.contract ? `${x.delivery.contract.origin || '—'} - ${x.delivery.contract.destination || '—'} · ${x.delivery.contract.control_no || ''}` : '—'}</td>
+                        <td className="r mono">{nm(x.amount)}</td><td>{x.beban === 'supir' ? 'Potong supir' : 'Perusahaan'}</td><td>{x.keterangan || ''}</td></tr>
+                    ))}
+                    <tr className="lb-total"><td colSpan={4}>Total Tambahan</td><td className="r mono">{nm(totalEx)}</td><td colSpan={2}></td></tr>
+                  </tbody>
+                </table></div>
+              </div>
+            )}
+
             <div className="rep-total" style={{ marginTop: 24 }}>
               <div><span>Total Borongan (Sisa)</span><b>{rp(T.sisa)}</b></div>
               <div><span>Total Uang Tembak</span><b>{rp(totalTb)}</b></div>
-              <div className="grand"><span>Grand Total</span><b>{rp(T.sisa + totalTb)}</b></div>
+              {totalEx > 0 && <div><span>Total Tambahan Uang Jalan</span><b>{rp(totalEx)}</b></div>}
+              <div className="grand"><span>Grand Total</span><b>{rp(T.sisa + totalTb + totalEx)}</b></div>
             </div>
           </div>
         )}

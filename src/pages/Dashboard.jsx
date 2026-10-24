@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Plate, Badge, Spinner, Empty, useToast } from '../components/ui'
-import { WO_STATUS, fmtDateShort, fmtAgo, woTitle } from '../lib/format'
+import { WO_STATUS, fmtDateShort, fmtAgo, woTitle, waitInfo } from '../lib/format'
 
 export default function Dashboard() {
   const { show, node } = useToast()
@@ -220,7 +220,7 @@ function MechanicLens({ queue, mechanics }) {
                       <div className="who" style={{ fontWeight: 600 }}>{woTitle(j)}</div>
                       <div className="code">
                         <Plate>{j.plate}</Plate>{j.specialty ? ` · ${j.specialty}` : ''}
-                        {j.wo_status === 'paused' && j.waiting_reason && <span style={{ color: '#7A5AA6' }}> · {j.waiting_reason}</span>}
+                        {j.wo_status === 'paused' && (() => { const wi = waitInfo(j.waiting_reason, j.waiting_expected); return wi && <span className={wi.overdue ? 'wait-note overdue' : 'wait-note'}> · {wi.text}{wi.overdue ? ' — telat' : ''}</span> })()}
                       </div>
                     </div>
                     <WoRight w={{ ...j, wo_status: j.wo_status }} />
@@ -302,8 +302,7 @@ function TruckCard({ t, prog, bd }) {
               <div className="code">
                 {w.is_outsourced ? `→ ${w.vendor_name || 'vendor'}` : (w.mechanic_name || (w.external_assignee ? `${w.external_assignee} (external)` : 'Unassigned'))}
                 {w.specialty ? ` · ${w.specialty}` : ''} · {w.wo_code}
-                {w.wo_status === 'paused' && w.waiting_reason &&
-                  <span style={{ color: '#7A5AA6' }}> · {w.waiting_reason}</span>}
+                {w.wo_status === 'paused' && (() => { const wi = waitInfo(w.waiting_reason, w.waiting_expected); return wi && <span className={wi.overdue ? 'wait-note overdue' : 'wait-note'}> · {wi.text}{wi.overdue ? ' — telat' : ''}</span> })()}
               </div>
             </div>
             <WoRight w={w} />

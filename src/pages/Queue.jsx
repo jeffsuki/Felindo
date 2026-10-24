@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Plate, Badge, Spinner, Empty, useToast } from '../components/ui'
 import SearchSelect from '../components/SearchSelect'
-import { WO_STATUS, woTitle } from '../lib/format'
+import { WO_STATUS, woTitle, waitInfo } from '../lib/format'
 import TemuanBaru from '../components/TemuanBaru'
 
 // Single column: an Unassigned pool (grouped by truck, collapsible) at the top,
@@ -35,7 +35,7 @@ export default function Queue() {
     setLoading(true)
     const [wo, me, ve] = await Promise.all([
       supabase.from('work_orders')
-        .select('id,code,description,status,waiting_reason,external_assignee,by_driver,assigned_mechanic_id,is_outsourced,sent_date,expected_back_date,vendor:vendors(id,name),specialty:specialties(label),complaint:complaints!inner(id,priority,status,truck:trucks(plate,code))')
+        .select('id,code,description,status,waiting_reason,waiting_since,waiting_expected,external_assignee,by_driver,assigned_mechanic_id,is_outsourced,sent_date,expected_back_date,vendor:vendors(id,name),specialty:specialties(label),complaint:complaints!inner(id,priority,status,truck:trucks(plate,code))')
         .eq('voided', false).neq('status', 'done').eq('complaint.voided', false),
       supabase.from('mechanics').select('id,code,name,nickname,can_lift').eq('status', 'Active').eq('employment_type', 'in_house').order('code'),
       supabase.from('vendors').select('id,name').eq('status', 'Active').eq('for_outsource', true).order('name'),
@@ -262,6 +262,7 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
   const st = WO_STATUS[w.status] || {}
   const [waitMode, setWaitMode] = useState(false)
   const [waitReason, setWaitReason] = useState('')
+  const [waitBack, setWaitBack] = useState('')
   const [outMode, setOutMode] = useState(false)
   const [outVendorId, setOutVendorId] = useState('')
   const [outSent, setOutSent] = useState(new Date().toISOString().slice(0, 10))
@@ -273,8 +274,8 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
   const assignedLabel = w.external_assignee ? `${w.external_assignee} (external)` : ''
 
   function saveWait() {
-    onPatch(w.id, { status: 'paused', waiting_reason: waitReason.trim() || null }, 'Set to waiting.')
-    setWaitMode(false); setWaitReason('')
+    onPatch(w.id, { status: 'paused', waiting_reason: waitReason.trim() || null, waiting_expected: waitBack || null }, 'Set to waiting.')
+    setWaitMode(false); setWaitReason(''); setWaitBack('')
   }
   function saveOut() {
     onPatch(w.id, {
@@ -293,7 +294,10 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
           <div className="code">
             {showTruck && <><Plate>{w.complaint?.truck?.plate}</Plate> · </>}
             {w.specialty?.label || '—'} · {w.code}
-            {w.status === 'paused' && w.waiting_reason && <span style={{ color: '#7A5AA6' }}> · waiting: {w.waiting_reason}</span>}
+            {w.status === 'paused' && (() => {
+              const wi = waitInfo(w.waiting_reason, w.waiting_expected)
+              return wi && <span className={wi.overdue ? 'wait-note overdue' : 'wait-note'}> · waiting: {wi.text}{wi.overdue ? ' — telat' : ''}</span>
+            })()}
           </div>
         </div>
         <Badge tone={st.tone}>{st.label}</Badge>
@@ -327,7 +331,7 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
           : <button className="btn primary sm" disabled={!hasWorker} title={hasWorker ? '' : 'Assign a mechanic first'}
               onClick={() => onPatch(w.id, { status: 'in_progress' }, 'Started.')}>Start</button>}
 
-        {!waitMode && <button className="btn ghost sm" onClick={() => { setWaitReason(w.waiting_reason || ''); setWaitMode(true); setOutMode(false) }}>{w.status === 'paused' ? 'Edit waiting' : 'Waiting…'}</button>}
+        {!waitMode && <button className="btn ghost sm" onClick={() => { setWaitReason(w.waiting_reason || ''); setWaitBack(w.waiting_expected || ''); setWaitMode(true); setOutMode(false) }}>{w.status === 'paused' ? 'Edit waiting' : 'Waiting…'}</button>}
         {!outMode && <button className="btn ghost sm" onClick={() => { setOutMode(true); setWaitMode(false) }}>Outsource…</button>}
         <button className={'btn ghost sm' + (w.by_driver ? ' driver-on' : '')}
           title="Toggle: this job is done by a driver"
@@ -341,6 +345,8 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
           <input autoFocus value={waitReason} onChange={e => setWaitReason(e.target.value)}
             placeholder="Waiting for... (e.g. nunggu part, bubutan di luar)"
             onKeyDown={e => e.key === 'Enter' && saveWait()} style={{ fontSize: 13, padding: '6px 9px' }} />
+          <label style={{ fontSize: 11, color: 'var(--muted)' }}>Kira-kira beres/kembali
+            <input type="date" value={waitBack} onChange={e => setWaitBack(e.target.value)} style={{ fontSize: 13, padding: '5px 7px' }} /></label>
           <button className="btn primary sm" onClick={saveWait}>Set waiting</button>
           <button className="btn ghost sm" onClick={() => setWaitMode(false)}>Cancel</button>
         </div>

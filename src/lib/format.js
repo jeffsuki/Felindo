@@ -17,6 +17,18 @@ export function fmtDateShort(iso) {
   return new Date(iso).toLocaleDateString(undefined, { day: '2-digit', month: 'short' })
 }
 
+// Waiting line for a paused job: "nunggu part · s/d 28 Oct", overdue once
+// the expected date has passed (local time).
+export function waitInfo(reason, expected) {
+  if (!reason && !expected) return null
+  const d = new Date()
+  const today = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+  return {
+    text: [reason, expected ? `s/d ${fmtDateShort(expected)}` : null].filter(Boolean).join(' · '),
+    overdue: !!expected && expected < today,
+  }
+}
+
 // Work-order status -> label + color token (labels in the shop's terms)
 export const WO_STATUS = {
   unassigned:        { label: 'Unassigned',  tone: 'muted' },

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Spinner, Empty, Badge, useToast } from '../components/ui'
@@ -10,7 +10,7 @@ const rp = n => (n === null || n === undefined || n === '') ? 'Rp 0' : 'Rp ' + M
 const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) : '—'
 const netOf = d => Number(d.borongan || 0) - Number(d.bbm_rupiah || 0) - Number(d.potongan_susut || 0) - Number(d.potongan_pm || 0) - Number(d.potongan_lain || 0)
 
-const NUMF = ['estimasi_muat', 'muatan', 'bongkar', 'borongan', 'bbm_liter', 'bbm_rupiah', 'potongan_susut', 'potongan_pm', 'potongan_lain', 'do_no', 'reject_oa_per_kg']
+const NUMF = ['estimasi_muat', 'muatan', 'bongkar', 'borongan', 'bbm_liter', 'bbm_rupiah', 'potongan_susut', 'potongan_pm', 'potongan_lain', 'do_no', 'reject_oa_per_kg', 'muat_bruto', 'muat_tarra', 'bongkar_bruto', 'bongkar_tarra']
 
 const qtyKnown = c => !!c && c.quantity_kg !== null && c.quantity_kg !== undefined && c.quantity_kg !== ''
 // The price can change mid-contract (contract_rates): a delivery is billed at the
@@ -41,6 +41,8 @@ export default function FleetContractDetail() {
   const [rates, setRates] = useState([])
   const [trucks, setTrucks] = useState([])
   const [drivers, setDrivers] = useState([])
+  const [extras, setExtras] = useState([])     // tambahan uang jalan, per rincian
+  const [xRow, setXRow] = useState(null)       // delivery id with the ⋯ panel open
   const [loading, setLoading] = useState(true)
   // Daftar kontrol order: by DO number or by date. The order is fixed when the list loads or the sort changes,
   // so a row does not jump while its date or DO number is being edited.
@@ -54,7 +56,7 @@ export default function FleetContractDetail() {
   async function load() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
-    const [ct, dl, tr, dr, rr] = await Promise.all([
+    const [ct, dl, tr, dr, rr, ex] = await Promise.all([
       supabase.from('fleet_contracts').select('*').eq('id', id).single(),
       // A load can carry two contracts: the slip row (main) and a part row on the other contract
       // (parent_id = main). Embed the other side of each link for the badges.
@@ -64,9 +66,10 @@ export default function FleetContractDetail() {
       supabase.from('trucks').select('id,plate,capacity_kg,status').eq('status', 'Active').order('plate'),
       supabase.from('drivers').select('name,nickname,status').eq('status', 'Active').order('name'),
       supabase.from('contract_rates').select('*').eq('contract_id', id).order('effective_from'),
+      supabase.from('fleet_extras').select('*, delivery:fleet_deliveries!inner(contract_id)').eq('delivery.contract_id', id).order('tanggal'),
     ])
     setC(ct.data || null); setRows(dl.data || []); setTrucks(tr.data || []); setDrivers(dr.data || []); setTick(t => t + 1)
-    setRates(rr.data || [])
+    setRates(rr.data || []); setExtras(ex.data || [])
     setLoading(false)
   }
   useEffect(() => { load() }, [id])
@@ -93,7 +96,8 @@ export default function FleetContractDetail() {
       if (d.muatan != null && d.muatan !== '' && d.bongkar != null && d.bongkar !== '') {
         const s = Number(d.muatan) - Number(d.bongkar)
         t.susut += s
-        if (tol > 0) t.claim += Math.max(s - tol * Number(d.muatan), 0)
+        // waived (ditanggung klien) and oper'd rows are charged to no one
+        if (tol > 0 && !d.susut_waived && !d.oper_truck_id) t.claim += Math.max(s - tol * Number(d.muatan), 0)
       }
       t.committed += Number(d.muatan ?? d.estimasi_muat ?? 0)
     }
@@ -163,6 +167,19 @@ export default function FleetContractDetail() {
     const { error } = await supabase.from('fleet_deliveries').update({ [field]: value }).eq('id', did)
     if (error) show(error.message, true)
   }
+  // Weighbridge: committing bruto or tarra recomputes netto (muatan / bongkar)
+  // when both weights are present; netto stays directly editable on its own.
+  async function saveWeigh(d, field, raw, bF, tF, nF) {
+    const v = num(raw)
+    const patch = { [field]: v }
+    const bruto = field === bF ? v : num(d[bF])
+    const tarra = field === tF ? v : num(d[tF])
+    if (field !== nF && bruto != null && tarra != null) patch[nF] = bruto - tarra
+    const { error } = await supabase.from('fleet_deliveries').update(patch).eq('id', did_of(d))
+    if (error) return show(error.message, true)
+    setRows(rs => rs.map(r => r.id === d.id ? { ...r, ...patch } : r))
+  }
+  const did_of = d => d.id
   async function saveTruck(did, truckId) {
     const t = trucks.find(x => x.id === truckId)
     setCell(did, 'truck_id', truckId || null); setCell(did, 'plate', t?.plate || null)
@@ -180,6 +197,53 @@ export default function FleetContractDetail() {
     const { error } = await supabase.from('fleet_deliveries').delete().eq('id', did)
     if (error) return show(error.message, true)
     setRows(rs => rs.filter(r => r.id !== did))
+  }
+
+  async function patchRow(did, patch, msg) {
+    const { error } = await supabase.from('fleet_deliveries').update(patch).eq('id', did)
+    if (error) return show(error.message, true)
+    setRows(rs => rs.map(r => r.id === did ? { ...r, ...patch } : r))
+    if (msg) show(msg)
+  }
+  // Oper muatan: record the second truck; all potongan on the row are removed.
+  const POTONGAN_FIELDS = { potongan_susut: null, potongan_pm: null, potongan_lain: null, potongan_ban: null, potongan_sparepart: null, potongan_kasbon: null, potongan_pihak: null, potongan_pihak_nama: null }
+  async function saveOper(d, f) {
+    if (!f.truckId) return show('Pilih truk pengganti.', true)
+    const t = trucks.find(x => x.id === f.truckId)
+    await patchRow(d.id, {
+      oper_truck_id: f.truckId, oper_plate: t?.plate || null, oper_driver_name: f.driver || null,
+      oper_date: f.date || null, oper_amount: num(f.amount), ...POTONGAN_FIELDS,
+    }, `Dioper ke ${t?.plate || ''} — semua potongan dihapus.`)
+  }
+  async function cancelOper(d) {
+    if (!confirm('Batalkan oper? Catatan truk pengganti dihapus (potongan yang sudah terhapus tidak dikembalikan).')) return
+    await patchRow(d.id, { oper_truck_id: null, oper_plate: null, oper_driver_name: null, oper_date: null, oper_amount: null }, 'Oper dibatalkan.')
+  }
+  async function waiveSusut(d) {
+    const reason = prompt('Susut ditanggung klien — alasannya? (mis. salah timbang di pabrik)')
+    if (reason === null) return
+    await patchRow(d.id, { susut_waived: true, susut_waived_reason: reason.trim() || null, potongan_susut: null },
+      'Susut ditanggung klien: claim 0, potongan supir 0.')
+  }
+  async function unwaiveSusut(d) {
+    if (!confirm('Batalkan? Claim susut dihitung lagi seperti biasa.')) return
+    await patchRow(d.id, { susut_waived: false, susut_waived_reason: null }, 'Waive dibatalkan.')
+  }
+  async function addExtra(d, f) {
+    if (!num(f.amount)) return show('Isi jumlah tambahan.', true)
+    const { data, error } = await supabase.from('fleet_extras').insert({
+      delivery_id: d.id, tanggal: f.tanggal, amount: num(f.amount), keterangan: f.ket.trim() || null,
+      beban: f.beban, driver_name: f.driver || null,
+    }).select('*').single()
+    if (error) return show(error.message, true)
+    setExtras(xs => [...xs, data].sort((a, b) => String(a.tanggal).localeCompare(String(b.tanggal))))
+    show(`Tambahan ${rp(num(f.amount))} dicatat (${f.beban === 'supir' ? 'potong supir' : 'biaya perusahaan'}).`)
+  }
+  async function delExtra(x) {
+    if (!confirm(`Hapus tambahan ${rp(x.amount)} (${fmtDate(x.tanggal)})?`)) return
+    const { error } = await supabase.from('fleet_extras').delete().eq('id', x.id)
+    if (error) return show(error.message, true)
+    setExtras(xs => xs.filter(e => e.id !== x.id))
   }
 
   if (loading) return (<><div className="topbar"><div><h1>Contract</h1></div></div><div className="content"><Spinner /></div></>)
@@ -283,8 +347,10 @@ export default function FleetContractDetail() {
                 const main = isPart ? d.parent : null
                 const others = d.parts || []
                 const lockTip = isPart ? `Ikut slip utama${main?.contract?.control_no ? ` (kontrak ${main.contract.control_no})` : ''}` : undefined
+                const myExtras = extras.filter(x => x.delivery_id === d.id)
                 return (
-                  <tr key={d.id} className={[isPart ? 'slip-part' : '', d.is_reject ? 'row-reject' : ''].join(' ').trim()}>
+                  <Fragment key={d.id}>
+                  <tr className={[isPart ? 'slip-part' : '', d.is_reject ? 'row-reject' : ''].join(' ').trim()}>
                     <td><input value={d.do_no ?? ''} onChange={e => setCell(d.id, 'do_no', e.target.value)} onBlur={e => saveField(d.id, 'do_no', e.target.value)} /></td>
                     <td><input type="date" disabled={isPart} title={lockTip} value={d.tanggal || ''} onChange={e => setCell(d.id, 'tanggal', e.target.value)} onBlur={e => saveField(d.id, 'tanggal', e.target.value)} /></td>
                     <td>
@@ -302,13 +368,15 @@ export default function FleetContractDetail() {
                     </td>
                     <td><NumInput value={d.estimasi_muat} onChange={n => setCell(d.id, 'estimasi_muat', n)} onCommit={n => saveField(d.id, 'estimasi_muat', n)} /></td>
                     <td><input type="date" value={d.tanggal_muat || ''} onChange={e => setCell(d.id, 'tanggal_muat', e.target.value)} onBlur={e => saveField(d.id, 'tanggal_muat', e.target.value)} /></td>
-                    <td><NumInput value={d.muatan} onChange={n => setCell(d.id, 'muatan', n)} onCommit={n => saveField(d.id, 'muatan', n)} /></td>
+                    <td><WeighCell d={d} bF="muat_bruto" tF="muat_tarra" nF="muatan" setCell={setCell} saveWeigh={saveWeigh} /></td>
                     <td><input type="date" value={d.tanggal_bongkar || ''} onChange={e => setCell(d.id, 'tanggal_bongkar', e.target.value)} onBlur={e => saveField(d.id, 'tanggal_bongkar', e.target.value)} /></td>
-                    <td><NumInput value={d.bongkar} onChange={n => setCell(d.id, 'bongkar', n)} onCommit={n => saveField(d.id, 'bongkar', n)} /></td>
+                    <td><WeighCell d={d} bF="bongkar_bruto" tF="bongkar_tarra" nF="bongkar" setCell={setCell} saveWeigh={saveWeigh} /></td>
                     <td className="dk-susut" style={rowOver ? { color: 'var(--urgent)', fontWeight: 700 } : {}}>{s != null ? fmtId(s) : '—'}</td>
-                    <td className="dk-susut" style={rowOver ? { color: 'var(--urgent)', fontWeight: 700 } : {}}>{(() => {
+                    <td className="dk-susut" style={rowOver && !d.susut_waived && !d.oper_truck_id ? { color: 'var(--urgent)', fontWeight: 700 } : {}}>{(() => {
                       const tol = Number(c.susut_tolerance ?? 0)
                       if (s == null || !(tol > 0)) return '—'
+                      if (d.susut_waived) return <span title={`Ditanggung klien${d.susut_waived_reason ? ` — ${d.susut_waived_reason}` : ''}`}>0</span>
+                      if (d.oper_truck_id) return <span title="Dioper — tidak diklaim ke supir">0</span>
                       const claim = Math.max(s - tol * Number(d.muatan), 0)
                       return claim > 0 ? fmtId(claim) : '0'
                     })()}</td>
@@ -327,10 +395,24 @@ export default function FleetContractDetail() {
                           : 'Remove this delivery?'
                         if (confirm(msg)) delRow(d.id)
                       }}>✕</button>
+                      {!isPart && <button className={'btn ghost sm' + (xRow === d.id ? ' on' : '')} title="Oper / tambahan uang jalan / susut klien"
+                        onClick={() => setXRow(x => x === d.id ? null : d.id)}>⋯</button>}
                       {isPart && <span className="part-badge" title={lockTip}>Slip {main?.contract?.control_no || '—'}{main?.do_no != null ? ` DO ${main.do_no}` : ''}</span>}
                       {others.map(o => <span key={o.id} className="part-badge" title="Same load also carries this contract">+ {o.contract?.control_no || '—'}</span>)}
+                      {d.oper_truck_id && <span className="part-badge oper-badge" title={`Dioper ${d.oper_date ? fmtDate(d.oper_date) : ''}${d.oper_amount ? ` · dioper ${rp(d.oper_amount)}` : ''}`}>Oper → {d.oper_plate || '?'}</span>}
+                      {d.susut_waived && <span className="part-badge waive-badge" title={d.susut_waived_reason || 'Ditanggung klien'}>Susut klien</span>}
+                      {myExtras.length > 0 && <span className="part-badge" title={myExtras.map(x => `${fmtDate(x.tanggal)} ${rp(x.amount)}${x.keterangan ? ` — ${x.keterangan}` : ''}`).join('\n')}>+{myExtras.length} tambahan</span>}
                     </td>
                   </tr>
+                  {xRow === d.id && !isPart && (
+                    <tr className="dkx-row"><td colSpan={13}>
+                      <RowPanel d={d} s={s} trucks={trucks} drivers={drivers} myExtras={myExtras}
+                        onOper={f => saveOper(d, f)} onCancelOper={() => cancelOper(d)}
+                        onWaive={() => waiveSusut(d)} onUnwaive={() => unwaiveSusut(d)}
+                        onAddExtra={f => addExtra(d, f)} onDelExtra={delExtra} />
+                    </td></tr>
+                  )}
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -342,5 +424,111 @@ export default function FleetContractDetail() {
 
       {node}
     </>
+  )
+}
+
+// Per-rincian actions: oper muatan, tambahan uang jalan, susut ditanggung klien.
+function RowPanel({ d, s, trucks, drivers, myExtras, onOper, onCancelOper, onWaive, onUnwaive, onAddExtra, onDelExtra }) {
+  const [operForm, setOperForm] = useState(null)   // {truckId, driver, date, amount}
+  const [exForm, setExForm] = useState(null)       // {tanggal, amount, ket, beban, driver}
+  const rpX = n => 'Rp ' + Math.round(Number(n || 0)).toLocaleString('id-ID')
+  return (
+    <div className="dkx">
+      {/* oper muatan */}
+      <div className="dkx-sec">
+        <div className="dkx-h">Oper muatan</div>
+        {d.oper_truck_id ? (
+          <div className="dkx-line">
+            Dioper ke <b>{d.oper_plate || '?'}</b>{d.oper_driver_name ? ` (${d.oper_driver_name})` : ''}
+            {d.oper_date ? ` · ${fmtDate(d.oper_date)}` : ''}{d.oper_amount ? ` · sisa dioper ${rpX(d.oper_amount)}` : ''}
+            <button className="btn ghost sm" onClick={onCancelOper}>Batal oper</button>
+          </div>
+        ) : operForm ? (
+          <div className="dkx-form">
+            <select value={operForm.truckId} onChange={e => setOperForm(f => ({ ...f, truckId: e.target.value }))}>
+              <option value="">Truk pengganti…</option>
+              {trucks.filter(t => t.id !== d.truck_id).map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}
+            </select>
+            <select value={operForm.driver} onChange={e => setOperForm(f => ({ ...f, driver: e.target.value }))}>
+              <option value="">Supirnya…</option>
+              {drivers.map(dr => <option key={dr.name} value={dr.name}>{dr.name}{dr.nickname ? ` (${dr.nickname})` : ''}</option>)}
+            </select>
+            <input type="date" value={operForm.date} onChange={e => setOperForm(f => ({ ...f, date: e.target.value }))} />
+            <NumInput value={operForm.amount} placeholder="Sisa uang jalan dioper (Rp)"
+              onChange={n => setOperForm(f => ({ ...f, amount: n }))} onCommit={n => setOperForm(f => ({ ...f, amount: n }))} />
+            <button className="btn primary sm" onClick={() => onOper(operForm)}>Simpan oper</button>
+            <button className="btn ghost sm" onClick={() => setOperForm(null)}>Batal</button>
+            <span className="dkx-hint">Tanpa SPB & uang tembak. Semua potongan di baris ini dihapus. Serah-terima sisa tidak mengubah kas; uang baru dicatat sebagai tambahan.</span>
+          </div>
+        ) : (
+          <button className="btn ghost sm" onClick={() => setOperForm({ truckId: '', driver: '', date: todayIso(), amount: '' })}>Truk rusak — oper ke truk lain…</button>
+        )}
+      </div>
+
+      {/* tambahan uang jalan */}
+      <div className="dkx-sec">
+        <div className="dkx-h">Tambahan uang jalan</div>
+        {myExtras.map(x => (
+          <div className="dkx-line" key={x.id}>
+            {fmtDate(x.tanggal)} · <b>{rpX(x.amount)}</b> · {x.beban === 'supir' ? 'potong supir' : 'biaya perusahaan'}
+            {x.driver_name ? ` · ${x.driver_name}` : ''}{x.keterangan ? ` — ${x.keterangan}` : ''}
+            <button className="btn ghost sm void-btn" onClick={() => onDelExtra(x)}>✕</button>
+          </div>
+        ))}
+        {exForm ? (
+          <div className="dkx-form">
+            <input type="date" value={exForm.tanggal} onChange={e => setExForm(f => ({ ...f, tanggal: e.target.value }))} />
+            <NumInput value={exForm.amount} placeholder="Jumlah (Rp)"
+              onChange={n => setExForm(f => ({ ...f, amount: n }))} onCommit={n => setExForm(f => ({ ...f, amount: n }))} />
+            <input value={exForm.ket} placeholder="Keterangan (mis. tambah solar oper)" onChange={e => setExForm(f => ({ ...f, ket: e.target.value }))} />
+            <select value={exForm.driver} onChange={e => setExForm(f => ({ ...f, driver: e.target.value }))}>
+              <option value="">Penerima…</option>
+              {drivers.map(dr => <option key={dr.name} value={dr.name}>{dr.name}{dr.nickname ? ` (${dr.nickname})` : ''}</option>)}
+              {[d.driver_name, d.oper_driver_name].filter(n => n && !drivers.some(x => x.name === n)).map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <div className="seg">
+              <button type="button" className={exForm.beban === 'perusahaan' ? 'on' : ''} onClick={() => setExForm(f => ({ ...f, beban: 'perusahaan' }))}>Biaya perusahaan</button>
+              <button type="button" className={exForm.beban === 'supir' ? 'on' : ''} onClick={() => setExForm(f => ({ ...f, beban: 'supir' }))}>Potong supir</button>
+            </div>
+            <button className="btn primary sm" onClick={() => { onAddExtra(exForm); setExForm(null) }}>Simpan</button>
+            <button className="btn ghost sm" onClick={() => setExForm(null)}>Batal</button>
+            <span className="dkx-hint">Masuk laporan kas & laporan harian pada tanggal ini. "Potong supir" ikut kasbon supir.</span>
+          </div>
+        ) : (
+          <button className="btn ghost sm" onClick={() => setExForm({ tanggal: todayIso(), amount: '', ket: '', beban: 'perusahaan', driver: d.oper_driver_name || d.driver_name || '' })}>+ Tambahan</button>
+        )}
+      </div>
+
+      {/* susut ditanggung klien */}
+      <div className="dkx-sec">
+        <div className="dkx-h">Susut</div>
+        {d.susut_waived ? (
+          <div className="dkx-line">
+            Ditanggung klien{d.susut_waived_reason ? ` — ${d.susut_waived_reason}` : ''} · claim klien 0, potongan supir 0
+            <button className="btn ghost sm" onClick={onUnwaive}>Batal</button>
+          </div>
+        ) : (
+          <div className="dkx-line">
+            {s != null && s > 0 ? `Susut ${Number(s).toLocaleString('id-ID')} kg.` : 'Belum ada susut tercatat.'}
+            <button className="btn ghost sm" onClick={onWaive}>Susut ditanggung klien…</button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Bruto / Tarra / Netto mini-stack for one weighing (muat or bongkar).
+// Netto lives in the existing muatan/bongkar column; typing B and T fills it.
+function WeighCell({ d, bF, tF, nF, setCell, saveWeigh }) {
+  const b = d[bF], t = d[tF], n = d[nF]
+  const mismatch = b != null && b !== '' && t != null && t !== '' && n != null && n !== '' && Math.abs((Number(b) - Number(t)) - Number(n)) > 0.5
+  return (
+    <div className="wtr-stack">
+      <div className="wtr"><span>B</span><NumInput value={b} onChange={v => setCell(d.id, bF, v)} onCommit={v => saveWeigh(d, bF, v, bF, tF, nF)} /></div>
+      <div className="wtr"><span>T</span><NumInput value={t} onChange={v => setCell(d.id, tF, v)} onCommit={v => saveWeigh(d, tF, v, bF, tF, nF)} /></div>
+      <div className={'wtr wtr-n' + (mismatch ? ' off' : '')} title={mismatch ? 'Netto ≠ Bruto − Tarra' : 'Netto (dipakai untuk susut & tagihan)'}>
+        <span>N</span><NumInput value={n} onChange={v => setCell(d.id, nF, v)} onCommit={v => saveWeigh(d, nF, v, bF, tF, nF)} /></div>
+    </div>
   )
 }
