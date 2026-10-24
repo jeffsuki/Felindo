@@ -50,6 +50,8 @@ export default function FleetSlips() {
   const [adding, setAdding] = useState(false)
   const [printId, setPrintId] = useState(null)
   const [adjFor, setAdjFor] = useState(null)
+  const [tbhFor, setTbhFor] = useState(null)   // slip whose Tambahan modal is open
+  const [extras, setExtras] = useState([])     // tambahan uang jalan for the loaded slips
   const [unlocked, setUnlocked] = useState(new Set())
   const [unlockFor, setUnlockFor] = useState(null)
   const [partFor, setPartFor] = useState(null)
@@ -125,6 +127,21 @@ export default function FleetSlips() {
   }
   useEffect(() => { if (isConfigured) loadRefs() }, [])
   useEffect(() => { if (isConfigured) loadRows(); else setLoading(false) }, [month, sq, flagged])
+  useEffect(() => {
+    if (!isConfigured) return
+    const ids = rows.filter(r => !r.parent_id).map(r => r.id)
+    if (!ids.length) { setExtras([]); return }
+    let live = true
+    ;(async () => {
+      const out = []
+      for (let i = 0; i < ids.length; i += 80) {
+        const { data } = await supabase.from('fleet_extras').select('*').in('delivery_id', ids.slice(i, i + 80)).order('tanggal')
+        out.push(...(data || []))
+      }
+      if (live) setExtras(out)
+    })()
+    return () => { live = false }
+  }, [rows])
   useEffect(() => { const t = setTimeout(() => setSq(q.trim().length >= 2 ? q.trim() : ''), 350); return () => clearTimeout(t) }, [q])
 
   // One entry per slip; a second (third…) contract on the same load sits in d.parts.
@@ -285,6 +302,22 @@ export default function FleetSlips() {
     if (error) return show(error.message, true)
     show('Adjustments saved.'); setAdjFor(null)
   }
+  async function addExtra(d, f) {
+    if (!num(f.amount)) return show('Isi jumlah tambahan.', true)
+    const { data, error } = await supabase.from('fleet_extras').insert({
+      delivery_id: d.id, tanggal: f.tanggal, amount: num(f.amount), keterangan: f.ket.trim() || null,
+      beban: f.beban, driver_name: f.driver || null,
+    }).select('*').single()
+    if (error) return show(error.message, true)
+    setExtras(xs => [...xs, data].sort((a, b) => String(a.tanggal).localeCompare(String(b.tanggal))))
+    show(`Tambahan Rp ${rp(num(f.amount))} tercatat tanggal ${fmtDate(f.tanggal)} (${f.beban === 'supir' ? 'potong supir' : 'biaya perusahaan'}).`)
+  }
+  async function delExtra(x) {
+    if (!confirm(`Hapus tambahan Rp ${rp(x.amount)} (${fmtDate(x.tanggal)})?`)) return
+    const { error } = await supabase.from('fleet_extras').delete().eq('id', x.id)
+    if (error) return show(error.message, true)
+    setExtras(xs => xs.filter(e => e.id !== x.id))
+  }
 
   if (loading) return (<><div className="topbar"><div><h1>Slip Uang Jalan</h1></div></div><div className="content"><Spinner /></div></>)
   const active = slips.find(r => r.id === printId)
@@ -351,6 +384,8 @@ export default function FleetSlips() {
                         <td className="dk-actions">
                           <button className="btn ghost sm" onClick={() => setPrintId(d.id)}>Print</button>
                           <button className={'btn ghost sm' + (hasAdj(d) ? ' driver-on' : '')} disabled={locked} onClick={() => setAdjFor(d.id)}>Adj{hasAdj(d) ? ' ✓' : ''}</button>
+                          {(() => { const n = extras.filter(x => x.delivery_id === d.id).length
+                            return <button className={'btn ghost sm' + (n ? ' driver-on' : '')} title="Tambahan uang jalan — uang keluar di hari lain, dicatat pada tanggalnya sendiri" onClick={() => setTbhFor(d.id)}>Tambahan{n ? ` ✓${n > 1 ? n : ''}` : ''}</button> })()}
                           {d.is_retur ? <>
                             <span className="retur-chip" title={d.retur_amount != null ? `Rp ${rp(d.retur_amount)} dikembalikan` : 'Trip batal — uang belum kembali'}>Retur{d.retur_date ? ' ' + fmtDate(d.retur_date) : ' · belum kembali'}</span>
                             {!d.retur_date && <button className="btn ghost sm" disabled={locked} title="Uang jalan sudah dikembalikan hari ini" onClick={() => saveRetur(d)}>Uang kembali</button>}
@@ -427,6 +462,9 @@ export default function FleetSlips() {
       {active && <SlipPrintH d={active} c={active.contract || {}} onClose={() => setPrintId(null)} />}
       {partMain && <AddPartModal main={partMain} contracts={contracts} onSave={f => addPart(partMain, f)} onClose={() => setPartFor(null)} />}
       {adjFor && <AdjustModal d={rows.find(r => r.id === adjFor)} onSave={p => saveAdj(adjFor, p)} onClose={() => setAdjFor(null)} />}
+      {tbhFor && <TambahanModal d={rows.find(r => r.id === tbhFor)} drivers={drivers}
+        extras={extras.filter(x => x.delivery_id === tbhFor)}
+        onAdd={f => addExtra(rows.find(r => r.id === tbhFor), f)} onDel={delExtra} onClose={() => setTbhFor(null)} />}
       {unlockFor && <UnlockModal onOk={tryUnlock} onCancel={() => setUnlockFor(null)} />}
       {node}
     </>
@@ -731,6 +769,60 @@ function SlipPrintH({ d, c, onClose }) {
       <div className="slip-actions no-print">
         <button className="btn primary" onClick={() => window.print()}>Print</button>
         <button className="btn ghost" onClick={onClose}>Close</button>
+      </div>
+    </div>
+  )
+}
+
+// Tambahan uang jalan: extra cash on a later day, attached to this slip's trip.
+// Booked in Laporan Kas and the Daily Report on ITS OWN date — the slip's day
+// and its Sisa do not move. "Potong supir" counts into the driver's kasbon.
+function TambahanModal({ d, drivers, extras, onAdd, onDel, onClose }) {
+  const [f, setF] = useState({ tanggal: localToday(), amount: '', ket: '', beban: 'perusahaan', driver: d.oper_driver_name || d.driver_name || '' })
+  const set = (k, v) => setF(x => ({ ...x, [k]: v }))
+  return (
+    <div className="slip-scrim">
+      <div className="rel-modal" style={{ width: 660, maxWidth: '94vw' }}>
+        <div className="slip-h" style={{ fontSize: 18 }}>Tambahan uang jalan · {d.plate || '—'} {d.driver_name ? `· ${d.driver_name}` : ''}</div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+          Slip {fmtDate(d.tanggal)}{d.contract?.control_no ? ` · kontrak ${d.contract.control_no}` : ''} — tambahan dicatat pada tanggalnya sendiri, slip tidak berubah.
+        </div>
+        {extras.length > 0 && (
+          <div style={{ overflowX: 'auto', marginTop: 12 }}>
+          <table className="dk-tbl ct-tbl" style={{ width: '100%' }}>
+            <thead><tr><th>Tanggal</th><th className="r">Jumlah</th><th>Beban</th><th>Penerima</th><th>Keterangan</th><th></th></tr></thead>
+            <tbody>
+              {extras.map(x => (
+                <tr key={x.id}>
+                  <td>{fmtDate(x.tanggal)}</td><td className="r mono">{rp(x.amount)}</td>
+                  <td>{x.beban === 'supir' ? 'Potong supir' : 'Perusahaan'}</td>
+                  <td>{x.driver_name || '—'}</td><td>{x.keterangan || ''}</td>
+                  <td><button className="btn ghost sm void-btn" onClick={() => onDel(x)}>✕</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+        )}
+        <div className="adj-grid" style={{ marginTop: 14 }}>
+          <label><span>Tanggal uang keluar</span><input type="date" value={f.tanggal} onChange={e => set('tanggal', e.target.value)} /></label>
+          <label><span>Jumlah (Rp)</span><NumInput value={f.amount} onChange={v => set('amount', v)} onCommit={v => set('amount', v)} /></label>
+          <label><span>Penerima</span>
+            <select value={f.driver} onChange={e => set('driver', e.target.value)}>
+              <option value="">—</option>
+              {drivers.map(dr => <option key={dr.name} value={dr.name}>{dr.name}{dr.nickname ? ` (${dr.nickname})` : ''}</option>)}
+              {[d.driver_name, d.oper_driver_name].filter(n => n && !drivers.some(x => x.name === n)).map(n => <option key={n} value={n}>{n}</option>)}
+            </select></label>
+          <label><span>Keterangan</span><input value={f.ket} placeholder="mis. cuci tangki dibayar belakangan" onChange={e => set('ket', e.target.value)} /></label>
+        </div>
+        <div className="seg" style={{ marginTop: 10 }}>
+          <button type="button" className={f.beban === 'perusahaan' ? 'on' : ''} onClick={() => set('beban', 'perusahaan')}>Biaya perusahaan</button>
+          <button type="button" className={f.beban === 'supir' ? 'on' : ''} onClick={() => set('beban', 'supir')}>Potong supir</button>
+        </div>
+        <div className="btn-group" style={{ marginTop: 14 }}>
+          <button className="btn primary" onClick={() => { onAdd(f); set('amount', ''); set('ket', '') }}>Simpan tambahan</button>
+          <button className="btn ghost" onClick={onClose}>Tutup</button>
+        </div>
       </div>
     </div>
   )
