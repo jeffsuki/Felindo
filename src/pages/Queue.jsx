@@ -191,37 +191,10 @@ export default function Queue() {
           {/* RIGHT: one section per mechanic */}
           <div className="mm-col">
             <div className="mm-col-title">Mechanics — current queue</div>
-            {mechanics.map(m => {
-              const jobs = byMech.get(m.id) || []
-              const active = jobs.filter(j => j.status === 'in_progress').length
-              return (
-                <div className="mm-section" key={m.id}>
-                  <div className="mm-section-head">
-                    <h3 className="mech">{title(m.name)}{m.nickname ? ` (${m.nickname})` : ''}</h3>
-                    <span className="cd">{m.code}</span>
-                    {m.can_lift && <Badge tone="accent">Lifts</Badge>}
-                    <span className="crow-wocount" style={{ marginLeft: 'auto' }}>
-                      {jobs.length === 0 ? 'free' : `${jobs.length} job${jobs.length === 1 ? '' : 's'}${active ? ` · ${active} working` : ''}`}
-                    </span>
-                  </div>
-                  {jobs.length === 0
-                    ? <div className="mcard-idle" style={{ padding: '6px 2px' }}>Nothing assigned</div>
-                    : (() => {
-                      const groups = [
-                        ['In process', jobs.filter(j => j.status === 'in_progress')],
-                        ['In queue', jobs.filter(j => j.status === 'assigned')],
-                        ['Waiting', jobs.filter(j => j.status === 'paused')],
-                      ].filter(([, arr]) => arr.length > 0)
-                      return groups.map(([label, arr]) => (
-                        <div key={label}>
-                          <div className="mm-substatus">{label} · {arr.length}</div>
-                          {arr.map(w => <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />)}
-                        </div>
-                      ))
-                    })()}
-                </div>
-              )
-            })}
+            {mechanics.map(m => (
+              <MechSection key={m.id} m={m} jobs={byMech.get(m.id) || []} pool={unassigned}
+                mechanics={mechanics} vendors={vendors} onPatch={patch} />
+            ))}
 
             {others.length > 0 && (
               <div className="mm-section">
@@ -327,6 +300,17 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
       </div>
       {w.by_driver && <div style={{ marginTop: 4 }}><Badge tone="accent">Done by driver</Badge></div>}
       <div className="mm-actions">
+        {!hasWorker && w.status === 'unassigned' ? (
+          // one-click assign: a chip per mechanic beats aiming at a dropdown
+          <div className="mech-chips">
+            {mechanics.map(m => (
+              <button key={m.id} className="mech-chip" title={title(m.name)}
+                onClick={() => onPatch(w.id, { assigned_mechanic_id: m.id, external_assignee: null, status: 'assigned' }, `→ ${title(m.nickname || m.name)}.`)}>
+                {title(m.nickname || m.name.split(' ')[0])}
+              </button>
+            ))}
+          </div>
+        ) : (
         <select className="mm-mech" value={w.assigned_mechanic_id || ''}
           onChange={e => {
             const v = e.target.value
@@ -336,6 +320,7 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
           <option value="">{assignedLabel || 'Unassigned'}</option>
           {mechanics.map(m => <option key={m.id} value={m.id}>{title(m.name)}{m.nickname ? ` (${m.nickname})` : ''}</option>)}
         </select>
+        )}
 
         {inProgress
           ? <button className="btn ghost sm" onClick={() => onPatch(w.id, { status: 'paused' }, 'Stopped.')}>Stop</button>
@@ -372,6 +357,59 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
           <button className="btn ghost sm" onClick={() => setOutMode(false)}>Cancel</button>
         </div>
       )}
+    </div>
+  )
+}
+
+// One mechanic's section: his queue plus "Ambil kerjaan" — pick a job from the
+// unassigned pool without hunting for the truck on the left.
+function MechSection({ m, jobs, pool, mechanics, vendors, onPatch }) {
+  const [pick, setPick] = useState(false)
+  const active = jobs.filter(j => j.status === 'in_progress').length
+  function take(w) {
+    setPick(false)
+    onPatch(w.id, { assigned_mechanic_id: m.id, external_assignee: null, status: 'assigned' },
+      `${w.complaint?.truck?.plate || ''} → ${title(m.nickname || m.name)}.`)
+  }
+  return (
+    <div className="mm-section">
+      <div className="mm-section-head">
+        <h3 className="mech">{title(m.name)}{m.nickname ? ` (${m.nickname})` : ''}</h3>
+        <span className="cd">{m.code}</span>
+        {m.can_lift && <Badge tone="accent">Lifts</Badge>}
+        <span className="crow-wocount" style={{ marginLeft: 'auto' }}>
+          {jobs.length === 0 ? 'free' : `${jobs.length} job${jobs.length === 1 ? '' : 's'}${active ? ` · ${active} working` : ''}`}
+        </span>
+        {pool.length > 0 && (
+          <button className="btn ghost sm" onClick={() => setPick(v => !v)}>{pick ? 'Tutup' : 'Ambil kerjaan'}</button>
+        )}
+      </div>
+      {pick && (
+        <div className="ambil-list">
+          {pool.map(w => (
+            <button key={w.id} className="ambil-row" onClick={() => take(w)}>
+              <Plate>{w.complaint?.truck?.plate}</Plate>
+              <span className="ambil-desc">{woTitle(w)}</span>
+              <span className="ambil-take">ambil →</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {jobs.length === 0
+        ? <div className="mcard-idle" style={{ padding: '6px 2px' }}>Nothing assigned</div>
+        : (() => {
+          const groups = [
+            ['In process', jobs.filter(j => j.status === 'in_progress')],
+            ['In queue', jobs.filter(j => j.status === 'assigned')],
+            ['Waiting', jobs.filter(j => j.status === 'paused')],
+          ].filter(([, arr]) => arr.length > 0)
+          return groups.map(([label, arr]) => (
+            <div key={label}>
+              <div className="mm-substatus">{label} · {arr.length}</div>
+              {arr.map(w => <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={onPatch} showTruck />)}
+            </div>
+          ))
+        })()}
     </div>
   )
 }
