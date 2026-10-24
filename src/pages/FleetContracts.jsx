@@ -217,7 +217,7 @@ function ContractForm({ clients, locations, initial, onSave, onCancel }) {
       </div>
       <div className="row2">
         <div className="field"><label>Est. distance — one-way (km)<span className="hint">actual travelled = ×2 (round trip)</span></label><NumInput value={f.distance_km} onChange={n => set('distance_km', n)} onCommit={n => set('distance_km', n)} /></div>
-        <div className="field"><label>Ongkos angkut (Rp/kg)<span className="hint">untuk tagihan</span></label><NumInput value={f.oa_per_kg} onChange={n => set('oa_per_kg', n)} onCommit={n => set('oa_per_kg', n)} placeholder="600" /></div>
+        <div className="field"><label>Ongkos angkut (Rp/kg)<span className="hint">harga awal — perubahan harga diatur di halaman kontrak</span></label><NumInput value={f.oa_per_kg} onChange={n => set('oa_per_kg', n)} onCommit={n => set('oa_per_kg', n)} placeholder="600" /></div>
       </div>
       <div className="row2">
         <div className="field"></div>

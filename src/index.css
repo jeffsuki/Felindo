@@ -760,3 +760,15 @@ tr.row-reject td input, tr.row-reject td select { color: var(--muted); }
 /* daily report: tanggal / bulan / tahun picker with arrows */
 .day-picker { align-items: center; }
 .day-picker select { padding: 6px 8px; }
+
+/* price changes within a contract (contract_rates) */
+.metric .rate-toggle { display: block; margin-top: 6px; background: none; border: none; padding: 0; font-size: 12px; color: var(--accent, #1b7a8c); cursor: pointer; text-align: left; }
+.metric .rate-toggle:hover { text-decoration: underline; }
+.rate-panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; margin: -8px 0 20px; }
+.rate-tbl { border-collapse: collapse; }
+.rate-tbl td { padding: 4px 14px 4px 0; font-size: 13px; }
+.rate-tbl td.r { text-align: right; }
+.rate-add { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 13px; color: var(--muted); }
+.rate-add input { width: auto; }
+.rate-add input[type=date] { padding: 5px 7px; }
+.rate-hint { font-size: 12px; }

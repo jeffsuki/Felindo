@@ -13,13 +13,24 @@ const netOf = d => Number(d.borongan || 0) - Number(d.bbm_rupiah || 0) - Number(
 const NUMF = ['estimasi_muat', 'muatan', 'bongkar', 'borongan', 'bbm_liter', 'bbm_rupiah', 'potongan_susut', 'potongan_pm', 'potongan_lain', 'do_no', 'reject_oa_per_kg']
 
 const qtyKnown = c => !!c && c.quantity_kg !== null && c.quantity_kg !== undefined && c.quantity_kg !== ''
-// Tagihan of one row: billed kg × ongkos angkut; a reject is billed out and back on its muatan (OA + the return-leg rate).
-function tagihanOf(c, d) {
-  const oa = Number(c?.oa_per_kg || 0)
+// The price can change mid-contract (contract_rates): a delivery is billed at the
+// rate in force on its tanggal MUAT (bongkar / slip date when muat is empty).
+const rateDateOf = d => d.tanggal_muat || d.tanggal_bongkar || d.tanggal || ''
+function rateFor(c, rates, date) {
+  let oa = num(c?.oa_per_kg)
+  for (const r of rates) if (r.effective_from <= date) oa = Number(r.oa_per_kg)   // rates sorted by effective_from
+  return oa
+}
+const hasPricing = (c, rates) => (c?.oa_per_kg !== null && c?.oa_per_kg !== undefined && c?.oa_per_kg !== '') || rates.length > 0
+// Tagihan of one row: billed kg × rate on its date; a reject is billed out and back on its muatan.
+function tagihanOf(c, d, rates) {
+  const oa = rateFor(c, rates, rateDateOf(d))
   if (!oa) return 0
   if (d.is_reject) return Number(d.muatan || 0) * (oa + Number(d.reject_oa_per_kg || 0))
   return Number((c.billing_basis === 'muatan' ? d.muatan : d.bongkar) || 0) * oa
 }
+const fmtShortD = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+const todayIso = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10) }
 
 export default function FleetContractDetail() {
   const { id } = useParams()
@@ -27,6 +38,7 @@ export default function FleetContractDetail() {
   const { show, node } = useToast()
   const [c, setC] = useState(null)
   const [rows, setRows] = useState([])
+  const [rates, setRates] = useState([])
   const [trucks, setTrucks] = useState([])
   const [drivers, setDrivers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -42,7 +54,7 @@ export default function FleetContractDetail() {
   async function load() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
-    const [ct, dl, tr, dr] = await Promise.all([
+    const [ct, dl, tr, dr, rr] = await Promise.all([
       supabase.from('fleet_contracts').select('*').eq('id', id).single(),
       // A load can carry two contracts: the slip row (main) and a part row on the other contract
       // (parent_id = main). Embed the other side of each link for the badges.
@@ -51,8 +63,10 @@ export default function FleetContractDetail() {
         .eq('contract_id', id).eq('is_retur', false).order('do_no', { ascending: true }),   // a retur slip is not a delivery
       supabase.from('trucks').select('id,plate,capacity_kg,status').eq('status', 'Active').order('plate'),
       supabase.from('drivers').select('name,nickname,status').eq('status', 'Active').order('name'),
+      supabase.from('contract_rates').select('*').eq('contract_id', id).order('effective_from'),
     ])
     setC(ct.data || null); setRows(dl.data || []); setTrucks(tr.data || []); setDrivers(dr.data || []); setTick(t => t + 1)
+    setRates(rr.data || [])
     setLoading(false)
   }
   useEffect(() => { load() }, [id])
@@ -73,7 +87,7 @@ export default function FleetContractDetail() {
     const tol = Number(c?.susut_tolerance ?? 0)
     t.tagihan = 0; t.rejects = 0
     for (const d of rows) {
-      t.tagihan += tagihanOf(c, d)
+      t.tagihan += tagihanOf(c, d, rates)
       if (d.is_reject) { t.rejects++; continue }      // a reject is billed but is no delivery for the contract
       t.muatan += Number(d.muatan || 0); t.bongkar += Number(d.bongkar || 0)
       if (d.muatan != null && d.muatan !== '' && d.bongkar != null && d.bongkar !== '') {
@@ -85,9 +99,10 @@ export default function FleetContractDetail() {
     }
     t.outstanding = Math.max(Number(c?.quantity_kg || 0) - t.committed, 0)
     t.over = qtyKnown(c) ? Math.max(t.muatan - Number(c.quantity_kg), 0) : 0
+    t.rateNow = rateFor(c, rates, todayIso())
     t.noLoad = rows.filter(d => !d.is_reject && (d.muatan === null || d.muatan === undefined || d.muatan === '')).length
     return t
-  }, [rows, c])
+  }, [rows, c, rates])
   async function setReject(d, on) {
     const msg = on ? 'Tandai muatan ini sebagai REJECT (ditolak, kembali ke asal)? Tidak dihitung sebagai muatan kontrak; ditagih pergi dan pulang.'
                    : 'Batalkan reject? Muatan ini dihitung lagi sebagai muatan kontrak.'
@@ -97,6 +112,39 @@ export default function FleetContractDetail() {
     if (error) return show(error.message, true)
     setRows(rs => rs.map(r => r.id === d.id ? { ...r, ...patch } : r))
   }
+  // price changes: collapsible history + "Ubah harga mulai tanggal"
+  const [ratesOpen, setRatesOpen] = useState(false)
+  const [nrDate, setNrDate] = useState(todayIso())
+  const [nrRate, setNrRate] = useState('')
+  async function addRate() {
+    const v = num(nrRate)
+    if (!v || v <= 0) return show('Isi harga baru (Rp/kg).', true)
+    if (!nrDate) return show('Pilih tanggal mulai.', true)
+    const { data, error } = await supabase.from('contract_rates')
+      .insert({ contract_id: id, effective_from: nrDate, oa_per_kg: v }).select('*').single()
+    if (error) return show(error.message.includes('duplicate') ? 'Sudah ada perubahan harga di tanggal itu — hapus dulu yang lama.' : error.message, true)
+    setRates(rs => [...rs, data].sort((a, b) => a.effective_from.localeCompare(b.effective_from)))
+    setNrRate(''); show(`Mulai ${fmtShortD(nrDate)}: Rp ${Math.round(v).toLocaleString('id-ID')}/kg.`)
+  }
+  async function delRate(r) {
+    if (!confirm(`Hapus perubahan harga mulai ${fmtShortD(r.effective_from)} (Rp ${Math.round(r.oa_per_kg).toLocaleString('id-ID')}/kg)?`)) return
+    const { error } = await supabase.from('contract_rates').delete().eq('id', r.id)
+    if (error) return show(error.message, true)
+    setRates(rs => rs.filter(x => x.id !== r.id))
+  }
+  // billed kg + Rp per rate period, for the breakdown (and the invoice lines)
+  const periods = useMemo(() => {
+    const ps = [{ from: null, oa: num(c?.oa_per_kg), kg: 0, rp: 0 }, ...rates.map(r => ({ from: r.effective_from, oa: Number(r.oa_per_kg), kg: 0, rp: 0, row: r }))]
+    for (const d of rows) {
+      const date = rateDateOf(d)
+      let i = 0
+      for (let k = 1; k < ps.length; k++) if (ps[k].from <= date) i = k
+      ps[i].kg += Number((d.is_reject || c?.billing_basis === 'muatan' ? d.muatan : d.bongkar) || 0)
+      ps[i].rp += tagihanOf(c, d, rates)
+    }
+    return ps
+  }, [rows, c, rates])
+
   const [closing, setClosing] = useState(null)   // final quantity being entered for an open-ended contract
   async function closeContract() {
     const q = num(closing)
@@ -154,10 +202,41 @@ export default function FleetContractDetail() {
             ? <div className="metric"><div className="k">Lebih dari kontrak</div><div className="v" style={{ fontSize: 18, color: 'var(--urgent)' }}>{kg(totals.over)}</div></div>
             : <div className="metric"><div className="k">Outstanding</div><div className="v" style={{ fontSize: 18 }}>{qtyKnown(c) ? kg(totals.outstanding) : '—'}</div></div>}
           <div className="metric"><div className="k">Deliveries</div><div className="v" style={{ fontSize: 18 }}>{rows.length - totals.rejects}{totals.rejects > 0 && <span className="ct-rej-n"> + {totals.rejects} reject</span>}</div></div>
-          <div className="metric"><div className="k">Tagihan OA{c.oa_per_kg ? ` · Rp ${Number(c.oa_per_kg).toLocaleString('id-ID')}/kg ${c.billing_basis === 'muatan' ? 'muatan' : 'bongkar'}` : ''}</div>
-            <div className="v" style={{ fontSize: 18 }}>{c.oa_per_kg ? rp(Math.round(totals.tagihan)) : <span className="ct-open">Isi ongkos angkut (Edit)</span>}</div></div>
+          <div className="metric"><div className="k">Tagihan OA{hasPricing(c, rates) && totals.rateNow ? ` · Rp ${Math.round(totals.rateNow).toLocaleString('id-ID')}/kg ${c.billing_basis === 'muatan' ? 'muatan' : 'bongkar'}` : ''}</div>
+            <div className="v" style={{ fontSize: 18 }}>{hasPricing(c, rates) ? rp(Math.round(totals.tagihan)) : <span className="ct-open">Isi ongkos angkut (Edit)</span>}</div>
+            {hasPricing(c, rates) && (
+              <button className="rate-toggle" onClick={() => setRatesOpen(o => !o)}>
+                {rates.length ? `Harga berubah ${rates.length}×` : 'Ubah harga'} {ratesOpen ? '▾' : '▸'}
+              </button>
+            )}
+          </div>
           <div className="metric"><div className="k">Total Claim Susut</div><div className="v" style={{ fontSize: 18, color: totals.claim > 0 ? 'var(--urgent)' : undefined }}>{kg(totals.claim)}</div></div>
         </div>
+
+        {ratesOpen && hasPricing(c, rates) && (
+          <div className="rate-panel">
+            <table className="rate-tbl">
+              <tbody>
+                {periods.map((p, i) => (
+                  <tr key={p.row?.id || 'base'}>
+                    <td>{i === 0 ? 'Harga awal' : `Mulai ${fmtShortD(p.from)}`}</td>
+                    <td className="r mono">{p.oa ? `Rp ${Math.round(p.oa).toLocaleString('id-ID')}/kg` : '—'}</td>
+                    <td className="r mono">{p.kg ? `${Math.round(p.kg).toLocaleString('id-ID')} kg` : ''}</td>
+                    <td className="r mono">{p.kg ? rp(Math.round(p.rp)) : ''}</td>
+                    <td>{p.row && <button className="btn ghost sm" title="Hapus perubahan harga ini" onClick={() => delRate(p.row)}>✕</button>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="rate-add">
+              <span>Ubah harga mulai</span>
+              <input type="date" value={nrDate} onChange={e => setNrDate(e.target.value)} />
+              <NumInput value={nrRate} onChange={setNrRate} onCommit={setNrRate} placeholder="Rp/kg baru" />
+              <button className="btn primary sm" onClick={addRate}>Simpan</button>
+              <span className="rate-hint">Harga berlaku menurut tanggal muat. Tagihan per periode di atas = baris untuk invoice.</span>
+            </div>
+          </div>
+        )}
 
         {!qtyKnown(c) && (
           <div className="banner ct-open-banner">
@@ -233,7 +312,7 @@ export default function FleetContractDetail() {
                       const claim = Math.max(s - tol * Number(d.muatan), 0)
                       return claim > 0 ? fmtId(claim) : '0'
                     })()}</td>
-                    <td className="dk-susut" title={d.is_reject ? `Reject: ${fmtId(d.muatan || 0)} kg × (OA ${fmtId(c.oa_per_kg || 0)} + kembali ${fmtId(d.reject_oa_per_kg || 0)})` : undefined}>{c.oa_per_kg ? fmtId(Math.round(tagihanOf(c, d))) : '—'}</td>
+                    <td className="dk-susut" title={(() => { const oa = rateFor(c, rates, rateDateOf(d)); return d.is_reject ? `Reject: ${fmtId(d.muatan || 0)} kg × (OA ${fmtId(oa)} + kembali ${fmtId(d.reject_oa_per_kg || 0)})` : `× Rp ${fmtId(oa)}/kg` })()}>{hasPricing(c, rates) ? fmtId(Math.round(tagihanOf(c, d, rates))) : '—'}</td>
                     <td className="dk-actions">
                       {!isPart && (d.is_reject
                         ? (<span className="rej-box">
