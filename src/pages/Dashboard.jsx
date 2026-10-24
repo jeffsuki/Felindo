@@ -11,6 +11,8 @@ export default function Dashboard() {
   const [progress, setProgress] = useState({})   // truck_id -> {done,total}
   const [breakdown, setBreakdown] = useState({}) // truck_id -> {in_process,waiting,at_vendor,queued}
   const [ready, setReady] = useState([])         // open complaints whose every WO is done
+  const [backlog, setBacklog] = useState([])     // deferred findings (temuan), not counted as down
+  const [backlogOpen, setBacklogOpen] = useState(false)
   const [queue, setQueue] = useState([])         // mechanic_queue rows (for mechanic lens)
   const [mechanics, setMechanics] = useState([])
   const [loading, setLoading] = useState(true)
@@ -19,7 +21,7 @@ export default function Dashboard() {
   async function load() {
     if (!isConfigured) { setLoading(false); return }
     setLoading(true)
-    const [down, ops, prog, q, m] = await Promise.all([
+    const [down, ops, prog, q, m, bl] = await Promise.all([
       supabase.from('trucks_down').select('*').order('reported_at', { ascending: true }),
       supabase.from('truck_operational_status').select('*'),
       supabase.from('truck_service_record')
@@ -27,6 +29,8 @@ export default function Dashboard() {
         .in('complaint_status', ['open', 'in_progress']),
       supabase.from('mechanic_queue').select('*'),
       supabase.from('mechanics').select('id,code,name').eq('status', 'Active').eq('employment_type', 'in_house').order('code'),
+      supabase.from('complaints').select('id,code,description,reported_at,truck:trucks(plate)')
+        .eq('voided', false).eq('backlog', true).in('status', ['open', 'in_progress']).order('reported_at', { ascending: true }),
     ])
     setRows(down.data || [])
     const map = {}
@@ -59,10 +63,18 @@ export default function Dashboard() {
     setReady([...byComplaint.values()].filter(g => g.total > 0 && g.done === g.total))
     setQueue(q.data || [])
     setMechanics(m.data || [])
+    setBacklog(bl.data || [])
     setFetchedAt(Date.now())
     setLoading(false)
   }
   useEffect(() => { load() }, [])
+
+  async function workBacklog(id, code) {
+    const { error } = await supabase.from('complaints').update({ backlog: false }).eq('id', id)
+    if (error) return show(error.message, true)
+    show(`${code} kembali ke papan — tinggal assign montirnya.`)
+    load()
+  }
 
   async function closeComplaint(id, code) {
     const { error } = await supabase.from('complaints')
@@ -145,6 +157,28 @@ export default function Dashboard() {
                 <Lane title="In repair" tone="warn" trucks={lanes.in_repair} progress={progress} breakdown={breakdown} />
                 <Lane title="At vendor" tone="out" trucks={lanes.awaiting_outsource} progress={progress} breakdown={breakdown} />
               </>
+            )}
+            {backlog.length > 0 && (
+              <div className="lane">
+                <div className="lane-head backlog-head" onClick={() => setBacklogOpen(o => !o)}>
+                  <h2>Backlog — temuan belum dikerjakan</h2>
+                  <span className="count">{backlog.length}</span>
+                  <span className="bl-caret">{backlogOpen ? '▾' : '▸'}</span>
+                  <span className="rule" />
+                </div>
+                {backlogOpen && (
+                  <div className="ready-list">
+                    {backlog.map(g => (
+                      <div className="ready-row" key={g.id}>
+                        <Plate>{g.truck?.plate}</Plate>
+                        <span className="ready-desc">{g.description}</span>
+                        <span className="ready-meta">{g.code} · {fmtAgo(g.reported_at)}</span>
+                        <button className="btn ghost sm" onClick={() => workBacklog(g.id, g.code)}>Kerjakan</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </>
         ) : (

@@ -3,6 +3,7 @@ import { supabase, isConfigured } from '../supabaseClient'
 import { Plate, Badge, Spinner, Empty, useToast } from '../components/ui'
 import SearchSelect from '../components/SearchSelect'
 import { WO_STATUS, woTitle } from '../lib/format'
+import TemuanBaru from '../components/TemuanBaru'
 
 // Single column: an Unassigned pool (grouped by truck, collapsible) at the top,
 // then one section per mechanic showing that mechanic's queue stacked in one
@@ -145,7 +146,10 @@ export default function Queue() {
           <h1>Mechanic Management</h1>
           <div className="sub">Each mechanic's queue — assign from the unassigned pool and drive each job</div>
         </div>
-        <button className="btn ghost" onClick={load}>Refresh</button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <TemuanBaru show={show} onSaved={load} />
+          <button className="btn ghost" onClick={load}>Refresh</button>
+        </div>
       </div>
       <div className="content" style={{ maxWidth: 1180 }}>
         <div className="board2">

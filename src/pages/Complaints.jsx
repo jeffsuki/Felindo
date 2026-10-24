@@ -32,7 +32,7 @@ export default function Complaints() {
     setLoading(true)
     const [c, t, d, m, s] = await Promise.all([
       supabase.from('complaints')
-        .select('id,code,description,resolution,status,priority,duration_class,pinned,reported_at,closed_at,reporter_name,reported_by_driver_id,reported_by_mechanic_id,truck:trucks(id,plate,code),driver:drivers(name,nickname),mechanic:mechanics(name,nickname),work_orders(id,status,description,helper_note,voided,assigned_mechanic_id,specialty:specialties(label))')
+        .select('id,code,description,resolution,status,priority,duration_class,backlog,pinned,reported_at,closed_at,reporter_name,reported_by_driver_id,reported_by_mechanic_id,truck:trucks(id,plate,code),driver:drivers(name,nickname),mechanic:mechanics(name,nickname),work_orders(id,status,description,helper_note,voided,assigned_mechanic_id,specialty:specialties(label))')
         .eq('voided', false)
         .order('reported_at', { ascending: false }),
       supabase.from('trucks').select('id,code,plate,fleet_division').eq('status', 'Active').order('plate'),
@@ -198,6 +198,7 @@ export default function Complaints() {
                     </div>
                     <div className="crow-meta">
                       {c.priority === 'urgent' && <Badge tone="urgent">Urgent</Badge>}
+                      {c.backlog && <Badge tone="muted">Backlog</Badge>}
                       <Badge tone={c.status === 'done' ? 'ok' : 'warn'}>{c.status === 'done' ? 'Done' : 'Open'}</Badge>
                       <span className="crow-wocount">{wos.length} WO{openCount > 0 ? ` - ${openCount} open` : ''}</span>
                     </div>
@@ -210,6 +211,12 @@ export default function Complaints() {
                           onSave={v => patchComplaint(c.id, { reported_at: v }, 'Saved.')} />
                         <EditableDateTime label="Complaint closed" value={c.closed_at} disabled={c.status !== 'done'}
                           onSave={v => patchComplaint(c.id, { closed_at: v }, 'Saved.')} />
+                        {c.status !== 'done' && (
+                          <button className="btn ghost sm" title="Backlog: tidak dihitung truk turun sampai dikerjakan"
+                            onClick={() => patchComplaint(c.id, { backlog: !c.backlog }, c.backlog ? 'Keluar dari backlog.' : 'Masuk backlog — tidak dihitung truk turun.')}>
+                            {c.backlog ? 'Keluar backlog' : 'Pindah ke backlog'}
+                          </button>
+                        )}
                         <button className="btn ghost sm" style={{ marginLeft: 'auto' }}
                           onClick={() => setEditing(editing === c.id ? null : c.id)}>
                           {editing === c.id ? 'Close edit' : 'Edit complaint'}

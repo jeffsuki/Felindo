@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase, isConfigured } from '../supabaseClient'
 import { Plate, Badge, Spinner, Empty, useToast } from '../components/ui'
 import { WO_STATUS, woTitle } from '../lib/format'
+import TemuanBaru from '../components/TemuanBaru'
 
 // Lean "walk the floor and tick things off" screen: every active job grouped
 // by mechanic, with one-tap Start / Done / Waiting. No assigning, no detail.
@@ -65,7 +66,10 @@ export default function Floor() {
           <h1>Floor</h1>
           <div className="sub">Walk the shop and tap to update — start, done, or waiting</div>
         </div>
-        <button className="btn ghost" onClick={load}>Refresh</button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <TemuanBaru show={show} onSaved={load} />
+          <button className="btn ghost" onClick={load}>Refresh</button>
+        </div>
       </div>
       <div className="content">
         {withWork.length === 0 ? (
