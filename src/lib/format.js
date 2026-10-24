@@ -1,12 +1,8 @@
-// Labor seconds -> compact "2h 05m" / "12m 30s"
-export function fmtDuration(totalSeconds) {
-  const s = Math.max(0, Math.floor(totalSeconds || 0))
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const sec = s % 60
-  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`
-  if (m > 0) return `${m}m ${String(sec).padStart(2, '0')}s`
-  return `${sec}s`
+// How long ago a timestamp was, at day level: "today" / "3d"
+export function fmtAgo(iso) {
+  if (!iso) return null
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
+  return days <= 0 ? 'today' : days + 'd'
 }
 
 export function fmtDate(iso) {
@@ -43,12 +39,6 @@ export const PRIORITY = {
   normal: { label: 'Normal', tone: 'muted' },
 }
 
-export const DURATION = {
-  same_day:        'Same day',
-  multi_day:       'Multi-day',
-  outsourced_wait: 'Outsourced wait',
-}
-
 // What a work order is "called" on screen: prefer what they actually do
 // (the description), fall back to the specialty, then the code.
 export function woTitle(w) {
@@ -72,7 +62,6 @@ export function nextActions(status) {
     case 'assigned':          return ['start', 'outsource', 'reassign', 'unassign']
     case 'in_progress':       return ['wait', 'complete', 'reassign', 'unassign', 'outsource']
     case 'paused':            return ['resume', 'wait', 'complete', 'reassign', 'unassign', 'outsource']
-    case 'awaiting_parts':    return ['resume', 'unassign']
     case 'awaiting_outsource':return ['return_from_vendor']
     default:                  return []
   }

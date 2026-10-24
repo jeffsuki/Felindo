@@ -5,7 +5,7 @@ import { Plate, Badge, Spinner, Empty, useToast } from '../components/ui'
 import SearchSelect from '../components/SearchSelect'
 import EditableDateTime from '../components/EditableDateTime'
 import { checkPassword, gateEnabled } from '../components/Gate'
-import { WO_STATUS, DURATION, fmtDate } from '../lib/format'
+import { WO_STATUS, fmtDate } from '../lib/format'
 
 const FILTERS = [['all', 'All'], ['open', 'Open'], ['done', 'Done']]
 const OPEN_SUB = [['all', 'All open'], ['pending', 'Pending'], ['on_process', 'On process']]
@@ -81,11 +81,6 @@ export default function Complaints() {
     const { error } = await supabase.from('complaints').update(patch).eq('id', id)
     if (error) return show(error.message, true)
     if (msg) show(msg)
-    load()
-  }
-  async function patchWO(id, patch) {
-    const { error } = await supabase.from('work_orders').update(patch).eq('id', id)
-    if (error) return show(error.message, true)
     load()
   }
   async function togglePin(c) {
@@ -194,7 +189,7 @@ export default function Complaints() {
                 <div className={'crow' + (isOpen ? ' open' : '')} key={c.id}>
                   <div className="crow-head" onClick={() => setExpanded(isOpen ? null : c.id)}>
                     <button className={'pin' + (c.pinned ? ' on' : '')} title={c.pinned ? 'Unpin' : 'Pin to top'}
-                      onClick={e => { e.stopPropagation(); togglePin(c) }}>{c.pinned ? '\u2605' : '\u2606'}</button>
+                      onClick={e => { e.stopPropagation(); togglePin(c) }}>{c.pinned ? '★' : '☆'}</button>
                     <Plate lg>{c.truck?.plate}</Plate>
                     <div className="crow-desc">
                       <div className="d">{c.description}</div>
@@ -206,7 +201,7 @@ export default function Complaints() {
                       <Badge tone={c.status === 'done' ? 'ok' : 'warn'}>{c.status === 'done' ? 'Done' : 'Open'}</Badge>
                       <span className="crow-wocount">{wos.length} WO{openCount > 0 ? ` - ${openCount} open` : ''}</span>
                     </div>
-                    <span className="crow-caret">{'\u25b6'}</span>
+                    <span className="crow-caret">{'▶'}</span>
                   </div>
                   {isOpen && (
                     <div className="crow-detail">
@@ -267,7 +262,6 @@ function EditComplaint({ c, refs, onSave, onCancel }) {
   const [description, setDescription] = useState(c.description || '')
   const [resolution, setResolution] = useState(c.resolution || '')
   const [priority, setPriority] = useState(c.priority || 'normal')
-  const [duration, setDuration] = useState(c.duration_class || '')
 
   function submit() {
     onSave({
@@ -275,7 +269,6 @@ function EditComplaint({ c, refs, onSave, onCancel }) {
       description: description.trim(),
       resolution: resolution.trim() || null,
       priority,
-      duration_class: duration || null,
       reported_by_driver_id: reporterType === 'driver' ? (driverId || null) : null,
       reported_by_mechanic_id: reporterType === 'mechanic' ? (mechanicId || null) : null,
       reporter_name: reporterType === 'other' ? (reporterName.trim() || null) : null,
@@ -315,21 +308,12 @@ function EditComplaint({ c, refs, onSave, onCancel }) {
         <label>Resolution<span className="hint">what was actually wrong / done, e.g. ternyata gerdang</span></label>
         <textarea value={resolution} onChange={e => setResolution(e.target.value)} style={{ minHeight: 52 }} />
       </div>
-      <div className="row2">
-        <div className="field">
-          <label>Priority</label>
-          <div className="seg">
-            {[['urgent', 'Urgent'], ['normal', 'Normal']].map(([v, l]) => (
-              <button type="button" key={v} className={priority === v ? 'on' : ''} onClick={() => setPriority(v)}>{l}</button>
-            ))}
-          </div>
-        </div>
-        <div className="field">
-          <label>Expected duration</label>
-          <select value={duration} onChange={e => setDuration(e.target.value)}>
-            <option value="">- not set -</option>
-            {Object.entries(DURATION).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
+      <div className="field">
+        <label>Priority</label>
+        <div className="seg">
+          {[['urgent', 'Urgent'], ['normal', 'Normal']].map(([v, l]) => (
+            <button type="button" key={v} className={priority === v ? 'on' : ''} onClick={() => setPriority(v)}>{l}</button>
+          ))}
         </div>
       </div>
       <div className="btn-group">
@@ -347,6 +331,7 @@ function AddComplaint({ refs, onCreate, onCancel }) {
   const [mechanicId, setMechanicId] = useState('')
   const [reporterName, setReporterName] = useState('')
   const [issues, setIssues] = useState([{ text: '', specialtyId: '' }])
+  const [priority, setPriority] = useState('normal')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -363,6 +348,7 @@ function AddComplaint({ refs, onCreate, onCancel }) {
     const payload = {
       truck_id: truckId,
       description: filled.map(i => i.text.trim()).join('; '),
+      priority,
       reported_by_driver_id: reporterType === 'driver' ? (driverId || null) : null,
       reported_by_mechanic_id: reporterType === 'mechanic' ? (mechanicId || null) : null,
       reporter_name: reporterType === 'other' ? (reporterName.trim() || null) : null,
@@ -398,6 +384,15 @@ function AddComplaint({ refs, onCreate, onCancel }) {
       </div>
 
       <div className="field">
+        <label>Priority</label>
+        <div className="seg" style={{ maxWidth: 240 }}>
+          {[['normal', 'Normal'], ['urgent', 'Urgent']].map(([v, l]) => (
+            <button type="button" key={v} className={priority === v ? 'on' : ''} onClick={() => setPriority(v)}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="field">
         <label>What's wrong<span className="hint">one line per problem - each becomes a work order</span></label>
         {issues.map((it, i) => (
           <div className="issue-row" key={i}>
@@ -407,7 +402,7 @@ function AddComplaint({ refs, onCreate, onCancel }) {
               <option value="">Specialty (optional)</option>
               {refs.specialties.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
-            <button type="button" className="btn ghost sm" onClick={() => removeIssue(i)} disabled={issues.length === 1}>{'\u00d7'}</button>
+            <button type="button" className="btn ghost sm" onClick={() => removeIssue(i)} disabled={issues.length === 1}>{'×'}</button>
           </div>
         ))}
         <button type="button" className="btn ghost sm" onClick={addIssue} style={{ marginTop: 6 }}>+ Add issue</button>

@@ -52,7 +52,7 @@ export default function Floor() {
   if (loading) return (
     <>
       <div className="topbar"><div><h1>Floor</h1></div></div>
-      <div className="content"><Spinner label="Loading floor\u2026" /></div>
+      <div className="content"><Spinner label="Loading floor…" /></div>
     </>
   )
 
@@ -63,7 +63,7 @@ export default function Floor() {
       <div className="topbar">
         <div>
           <h1>Floor</h1>
-          <div className="sub">Walk the shop and tap to update \u2014 start, done, or waiting</div>
+          <div className="sub">Walk the shop and tap to update — start, done, or waiting</div>
         </div>
         <button className="btn ghost" onClick={load}>Refresh</button>
       </div>
@@ -95,20 +95,20 @@ export default function Floor() {
                       {waiting ? (
                         <div className="floor-wait">
                           <input autoFocus value={reason} onChange={e => setReason(e.target.value)}
-                            placeholder="Waiting for\u2026 (optional)"
+                            placeholder="Waiting for… (optional)"
                             onKeyDown={e => e.key === 'Enter' && saveWaiting()} />
                           <button className="btn primary sm" onClick={saveWaiting}>Set</button>
-                          <button className="btn ghost sm" onClick={() => { setWaitFor(null); setReason('') }}>\u00d7</button>
+                          <button className="btn ghost sm" onClick={() => { setWaitFor(null); setReason('') }}>×</button>
                         </div>
                       ) : (
                         <div className="floor-actions">
                           {(j.wo_status === 'assigned') && (
                             <button className="btn primary sm" onClick={() => patch(j.work_order_id, { status: 'in_progress' }, 'Started.')}>Start</button>
                           )}
-                          {(j.wo_status === 'paused' || j.wo_status === 'awaiting_parts') && (
+                          {j.wo_status === 'paused' && (
                             <button className="btn primary sm" onClick={() => patch(j.work_order_id, { status: 'in_progress', waiting_reason: null }, 'Resumed.')}>Resume</button>
                           )}
-                          {j.wo_status !== 'paused' && j.wo_status !== 'awaiting_parts' && (
+                          {j.wo_status !== 'paused' && (
                             <button className="btn ghost sm" onClick={() => { setWaitFor(j.work_order_id); setReason('') }}>Waiting</button>
                           )}
                           <button className="btn ghost sm floor-done" onClick={() => patch(j.work_order_id, { status: 'done', waiting_reason: null }, 'Done.')}>Done</button>

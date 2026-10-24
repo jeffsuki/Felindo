@@ -13,7 +13,7 @@ export default function History() {
       <div className="topbar">
         <div>
           <h1>History</h1>
-          <div className="sub">Look back at complaints and their work \u2014 or the day-by-day log</div>
+          <div className="sub">Look back at complaints and their work — or the day-by-day log</div>
         </div>
         <div className="seg-lens">
           {TABS.map(([v, l]) => (
@@ -130,15 +130,15 @@ function Archive() {
                     <Plate lg>{c.truck?.plate}</Plate>
                     <div className="crow-desc">
                       <div className="d">{c.description}</div>
-                      {c.resolution && <div className="resolved">\u2192 Resolved: {c.resolution}</div>}
-                      <div className="m">{c.code} \u00b7 {who} \u00b7 {fmtDate(c.reported_at)}</div>
+                      {c.resolution && <div className="resolved">→ Resolved: {c.resolution}</div>}
+                      <div className="m">{c.code} · {who} · {fmtDate(c.reported_at)}</div>
                     </div>
                     <div className="crow-meta">
                       {c.priority === 'urgent' && <Badge tone="urgent">Urgent</Badge>}
                       <Badge tone={c.status === 'done' ? 'ok' : 'warn'}>{c.status === 'done' ? 'Done' : 'Open'}</Badge>
                       <span className="crow-wocount">{wos.length} WO</span>
                     </div>
-                    <span className="crow-caret">{'\u25b6'}</span>
+                    <span className="crow-caret">{'▶'}</span>
                   </div>
                   {isOpen && (
                     <div className="crow-detail">
@@ -146,13 +146,13 @@ function Archive() {
                         ? <div style={{ fontSize: 13, color: 'var(--muted)' }}>No work orders.</div>
                         : wos.map(w => {
                           const st = WO_STATUS[w.status] || {}
-                          const who2 = w.mechanic?.name ? title(w.mechanic.name) : (w.external_assignee ? `${w.external_assignee} (external)` : (w.vendor?.name ? `\u2192 ${w.vendor.name}` : 'Unassigned'))
+                          const who2 = w.mechanic?.name ? title(w.mechanic.name) : (w.external_assignee ? `${w.external_assignee} (external)` : (w.vendor?.name ? `→ ${w.vendor.name}` : 'Unassigned'))
                           return (
                             <div className="wo-row" key={w.id}>
                               <div className="l">
                                 <div className="who" style={{ fontWeight: 600 }}>{w.description || w.specialty?.label || 'Work order'}</div>
-                                <div className="code">{who2} \u00b7 {w.specialty?.label || '\u2014'} \u00b7 {w.code}
-                                  {w.helper_note && <span className="helper-inline"> \u00b7 helped by {w.helper_note}</span>}
+                                <div className="code">{who2} · {w.specialty?.label || '—'} · {w.code}
+                                  {w.helper_note && <span className="helper-inline"> · helped by {w.helper_note}</span>}
                                 </div>
                               </div>
                               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -179,7 +179,7 @@ function MechanicView({ mwos, loading, mView, setMView }) {
   const byTruck = useMemo(() => {
     const m = new Map()
     for (const w of mwos) {
-      const key = w.complaint?.truck?.plate || '\u2014'
+      const key = w.complaint?.truck?.plate || '—'
       if (!m.has(key)) m.set(key, [])
       m.get(key).push(w)
     }
@@ -193,8 +193,8 @@ function MechanicView({ mwos, loading, mView, setMView }) {
         <div className="l">
           <div className="who" style={{ fontWeight: 600 }}>{w.description || w.specialty?.label || 'Work order'}</div>
           <div className="code">
-            <Plate>{w.complaint?.truck?.plate}</Plate> \u00b7 {w.specialty?.label || '\u2014'} \u00b7 {w.code} \u00b7 {fmtDate(w.complaint?.reported_at)}
-            {w.helper_note && <span className="helper-inline"> \u00b7 helped by {w.helper_note}</span>}
+            <Plate>{w.complaint?.truck?.plate}</Plate> · {w.specialty?.label || '—'} · {w.code} · {fmtDate(w.complaint?.reported_at)}
+            {w.helper_note && <span className="helper-inline"> · helped by {w.helper_note}</span>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -223,7 +223,7 @@ function MechanicView({ mwos, loading, mView, setMView }) {
         </>
       ) : (
         <>
-          <div className="hist-count">{byTruck.length} truck{byTruck.length === 1 ? '' : 's'} \u00b7 {mwos.length} work order{mwos.length === 1 ? '' : 's'}</div>
+          <div className="hist-count">{byTruck.length} truck{byTruck.length === 1 ? '' : 's'} · {mwos.length} work order{mwos.length === 1 ? '' : 's'}</div>
           {byTruck.map(([plate, items]) => (
             <div className="mm-section" key={plate}>
               <div className="mm-section-head"><h3 className="mech"><Plate lg>{plate}</Plate></h3>
@@ -270,7 +270,7 @@ function Logs() {
         <div className="field"><label>To</label><input type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
       </div>
       {loading ? <Spinner label="Loading log..." /> : byDay.length === 0 ? (
-        <Empty title="Nothing logged">No events in this range \u2014 opens, completions, vendor sends, and closes show here.</Empty>
+        <Empty title="Nothing logged">No events in this range — opens, completions, vendor sends, and closes show here.</Empty>
       ) : byDay.map(([date, events]) => (
         <div className="hist-group" key={date}>
           <div className="hist-head"><span className="title">{fmtDayLabel(date)}</span>
@@ -285,7 +285,7 @@ function Logs() {
                   <Badge tone={et.tone}>{et.label}</Badge>
                   <span className="txt">
                     <Plate>{e.plate}</Plate> <span style={{ color: 'var(--text-2)', marginLeft: 6 }}>{e.ref_code}</span>
-                    {e.actor && <span className="actor"> \u00b7 {title(e.actor)}</span>}
+                    {e.actor && <span className="actor"> · {title(e.actor)}</span>}
                   </span>
                 </div>
               )
@@ -306,6 +306,6 @@ function fmtDayLabel(dateStr) {
   return d.toLocaleDateString(undefined, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
 }
 function fmtClock(iso) {
-  if (!iso) return '\u2014'
+  if (!iso) return '—'
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }

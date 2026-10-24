@@ -32,7 +32,7 @@ export default function SectionGate({ section, label, children }) {
           onChange={e => { setPw(e.target.value); setErr(false) }} />
         {err && <div className="gate-err">Wrong password.</div>}
         <button className="btn primary wide" type="submit">Unlock</button>
-        <NavLink to="/" className="gate-home">{'\u2190'} Back to home</NavLink>
+        <NavLink to="/" className="gate-home">{'←'} Back to home</NavLink>
       </form>
     </div>
   )

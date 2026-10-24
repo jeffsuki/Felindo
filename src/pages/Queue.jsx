@@ -35,7 +35,7 @@ export default function Queue() {
     const [wo, me, ve] = await Promise.all([
       supabase.from('work_orders')
         .select('id,code,description,status,waiting_reason,external_assignee,by_driver,assigned_mechanic_id,is_outsourced,sent_date,expected_back_date,vendor:vendors(id,name),specialty:specialties(label),complaint:complaints!inner(id,priority,status,truck:trucks(plate,code))')
-        .eq('voided', false).neq('status', 'done'),
+        .eq('voided', false).neq('status', 'done').eq('complaint.voided', false),
       supabase.from('mechanics').select('id,code,name,nickname,can_lift').eq('status', 'Active').eq('employment_type', 'in_house').order('code'),
       supabase.from('vendors').select('id,name').eq('status', 'Active').eq('for_outsource', true).order('name'),
     ])
@@ -64,7 +64,7 @@ export default function Queue() {
   const unassignedGroups = useMemo(() => {
     const m = new Map()
     for (const w of unassigned) {
-      const key = w.complaint?.truck?.plate || '\u2014'
+      const key = w.complaint?.truck?.plate || '—'
       if (!m.has(key)) m.set(key, [])
       m.get(key).push(w)
     }
@@ -124,12 +124,12 @@ export default function Queue() {
     return (
       <div className="pool-group" key={plate}>
         <div className="pool-group-head clickable" onClick={() => toggleGroup(plate)}>
-          <span className="pg-caret">{open ? '\u25be' : '\u25b8'}</span>
+          <span className="pg-caret">{open ? '▾' : '▸'}</span>
           <span className="pg-key">{plate}</span>
           <span className="pg-count">{items.length}</span>
           <button className={'pin' + (isPinned ? ' on' : '')} style={{ marginLeft: 'auto', fontSize: 15 }}
             title={isPinned ? 'Unpin' : 'Pin to top'}
-            onClick={e => { e.stopPropagation(); togglePin(plate) }}>{isPinned ? '\u2605' : '\u2606'}</button>
+            onClick={e => { e.stopPropagation(); togglePin(plate) }}>{isPinned ? '★' : '☆'}</button>
         </div>
         {open && items.map(w => (
           <WorkRow key={w.id} w={w} mechanics={mechanics} vendors={vendors} onPatch={patch} showTruck />
@@ -143,7 +143,7 @@ export default function Queue() {
       <div className="topbar">
         <div>
           <h1>Mechanic Management</h1>
-          <div className="sub">Each mechanic's queue \u2014 assign from the unassigned pool and drive each job</div>
+          <div className="sub">Each mechanic's queue — assign from the unassigned pool and drive each job</div>
         </div>
         <button className="btn ghost" onClick={load}>Refresh</button>
       </div>
@@ -163,7 +163,7 @@ export default function Queue() {
                 <>
                   {pinnedGroups.length > 0 && (
                     <>
-                      <div className="mm-substatus">\u2605 Pinned · {pinnedGroups.length} truck{pinnedGroups.length === 1 ? '' : 's'}</div>
+                      <div className="mm-substatus">★ Pinned · {pinnedGroups.length} truck{pinnedGroups.length === 1 ? '' : 's'}</div>
                       {renderGroups(pinnedGroups)}
                     </>
                   )}
@@ -197,7 +197,7 @@ export default function Queue() {
                     <span className="cd">{m.code}</span>
                     {m.can_lift && <Badge tone="accent">Lifts</Badge>}
                     <span className="crow-wocount" style={{ marginLeft: 'auto' }}>
-                      {jobs.length === 0 ? 'free' : `${jobs.length} job${jobs.length === 1 ? '' : 's'}${active ? ` \u00b7 ${active} working` : ''}`}
+                      {jobs.length === 0 ? 'free' : `${jobs.length} job${jobs.length === 1 ? '' : 's'}${active ? ` · ${active} working` : ''}`}
                     </span>
                   </div>
                   {jobs.length === 0
@@ -206,7 +206,7 @@ export default function Queue() {
                       const groups = [
                         ['In process', jobs.filter(j => j.status === 'in_progress')],
                         ['In queue', jobs.filter(j => j.status === 'assigned')],
-                        ['Waiting', jobs.filter(j => ['paused', 'awaiting_parts'].includes(j.status))],
+                        ['Waiting', jobs.filter(j => j.status === 'paused')],
                       ].filter(([, arr]) => arr.length > 0)
                       return groups.map(([label, arr]) => (
                         <div key={label}>
@@ -252,7 +252,7 @@ export default function Queue() {
                     <div className="mm-l">
                       <div className="who" style={{ fontWeight: 600 }}>{woTitle(w)}</div>
                       <div className="code">
-                        <Plate>{w.complaint?.truck?.plate}</Plate> · {w.specialty?.label || '\u2014'} · {w.code}
+                        <Plate>{w.complaint?.truck?.plate}</Plate> · {w.specialty?.label || '—'} · {w.code}
                         {w.external_assignee && <span> · {w.external_assignee}</span>}
                         {w.sent_date && <span> · sent {w.sent_date}</span>}
                         {w.expected_back_date && <span> · back {w.expected_back_date}</span>}
@@ -315,7 +315,7 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
           <div className="who" style={{ fontWeight: 600 }}>{woTitle(w)}</div>
           <div className="code">
             {showTruck && <><Plate>{w.complaint?.truck?.plate}</Plate> · </>}
-            {w.specialty?.label || '\u2014'} · {w.code}
+            {w.specialty?.label || '—'} · {w.code}
             {w.status === 'paused' && w.waiting_reason && <span style={{ color: '#7A5AA6' }}> · waiting: {w.waiting_reason}</span>}
           </div>
         </div>
@@ -334,7 +334,7 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
         </select>
 
         {inProgress
-          ? <button className="btn ghost sm" onClick={() => onPatch(w.id, { status: 'paused', waiting_reason: null }, 'Stopped.')}>Stop</button>
+          ? <button className="btn ghost sm" onClick={() => onPatch(w.id, { status: 'paused' }, 'Stopped.')}>Stop</button>
           : <button className="btn primary sm" disabled={!hasWorker} title={hasWorker ? '' : 'Assign a mechanic first'}
               onClick={() => onPatch(w.id, { status: 'in_progress' }, 'Started.')}>Start</button>}
 
@@ -343,7 +343,7 @@ function WorkRow({ w, mechanics, vendors, onPatch, showTruck }) {
         <button className={'btn ghost sm' + (w.by_driver ? ' driver-on' : '')}
           title="Toggle: this job is done by a driver"
           onClick={() => onPatch(w.id, { by_driver: !w.by_driver }, w.by_driver ? 'Driver flag cleared.' : 'Marked done by driver.')}>
-          {w.by_driver ? 'Driver \u2713' : 'Driver'}
+          {w.by_driver ? 'Driver ✓' : 'Driver'}
         </button>
       </div>
 

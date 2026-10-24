@@ -39,7 +39,7 @@ export default function Layout({ section = 'workshop', children }) {
         <div className="brand">
           <b>Felindo</b><span>{section === 'fleet' ? 'Fleet' : section === 'warehouse' ? 'Warehouse' : section === 'master' ? 'Master' : 'Workshop'}</span>
         </div>
-        <NavLink to="/" className="rail-home">{'\u2190'} Home</NavLink>
+        <NavLink to="/" className="rail-home">{'←'} Home</NavLink>
         <nav className="nav">
           {nav.map(n => (
             <NavLink key={n.to} to={n.to} end={n.end}

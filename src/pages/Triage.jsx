@@ -3,7 +3,7 @@ import { supabase, isConfigured } from '../supabaseClient'
 import { Plate, Badge, Spinner, Empty, useToast } from '../components/ui'
 import SearchSelect from '../components/SearchSelect'
 import { VoidControl } from './Complaints'
-import { WO_STATUS, PRIORITY, DURATION, nextActions, fmtDate } from '../lib/format'
+import { WO_STATUS, PRIORITY, nextActions, fmtDate } from '../lib/format'
 
 export default function Triage() {
   const { show, node } = useToast()
@@ -62,10 +62,6 @@ export default function Triage() {
     show('Complaint reopened.')
     load()
   }
-  async function setComplaintInProgress(id) {
-    await supabase.from('complaints').update({ status: 'in_progress' }).eq('id', id)
-  }
-
   if (loading) return (
     <>
       <div className="topbar"><div><h1>Sorting Work Orders</h1></div></div>
@@ -99,8 +95,7 @@ export default function Triage() {
             {complaints.map((c, i) => (
               <ComplaintCard key={c.id} c={c} refs={refs} defaultOpen={complaints.length <= 3 || i === 0}
                 onPatchWO={patchWO} onAddWO={addWO} onClose={closeComplaint}
-                onReopen={reopenComplaint}
-                onTouch={() => setComplaintInProgress(c.id)} />
+                onReopen={reopenComplaint} />
             ))}
           </div>
         )}
@@ -110,7 +105,7 @@ export default function Triage() {
   )
 }
 
-function ComplaintCard({ c, refs, onPatchWO, onAddWO, onClose, onReopen, onTouch, defaultOpen }) {
+function ComplaintCard({ c, refs, onPatchWO, onAddWO, onClose, onReopen, defaultOpen }) {
   const [showAdd, setShowAdd] = useState(false)
   const [open, setOpen] = useState(!!defaultOpen)
   const [woView, setWoView] = useState('all')   // all | queue | done
@@ -150,7 +145,7 @@ function ComplaintCard({ c, refs, onPatchWO, onAddWO, onClose, onReopen, onTouch
       {open && (
         <div className="crow-detail">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>{DURATION[c.duration_class] || '—'} · {c.truck?.fleet_division}</span>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>{c.truck?.fleet_division}</span>
             <div className="seg-lens" style={{ marginLeft: 'auto' }}>
               {[['all', 'All'], ['queue', 'In queue'], ['done', 'Done']].map(([v, l]) => (
                 <button key={v} className={woView === v ? 'on' : ''} onClick={() => setWoView(v)}>{l}</button>
@@ -170,7 +165,7 @@ function ComplaintCard({ c, refs, onPatchWO, onAddWO, onClose, onReopen, onTouch
           )}
 
           {wos.map(w => (
-            <WorkOrderRow key={w.id} w={w} refs={refs} onPatch={onPatchWO} onTouch={onTouch}
+            <WorkOrderRow key={w.id} w={w} refs={refs} onPatch={onPatchWO}
               onFollowUp={handleFollowUp} />
           ))}
 
@@ -192,7 +187,7 @@ function ComplaintCard({ c, refs, onPatchWO, onAddWO, onClose, onReopen, onTouch
   )
 }
 
-function WorkOrderRow({ w, refs, onPatch, onTouch, onFollowUp }) {
+function WorkOrderRow({ w, refs, onPatch, onFollowUp }) {
   const st = WO_STATUS[w.status] || WO_STATUS.unassigned
   const actions = nextActions(w.status)
   const [reassignTo, setReassignTo] = useState('')
@@ -214,7 +209,7 @@ function WorkOrderRow({ w, refs, onPatch, onTouch, onFollowUp }) {
   const [edByDriver, setEdByDriver] = useState(false)
 
   // Follow-up applies once a mechanic has engaged with the task and reported back
-  const canFollowUp = ['in_progress', 'paused', 'awaiting_parts', 'done'].includes(w.status) && !w.is_outsourced
+  const canFollowUp = ['in_progress', 'paused', 'done'].includes(w.status) && !w.is_outsourced
   const canAssign = actions.includes('assign') || actions.includes('reassign')
 
   const assignee = w.is_outsourced
@@ -373,7 +368,7 @@ function WorkOrderRow({ w, refs, onPatch, onTouch, onFollowUp }) {
               onPick={(mid) => onPatch(w.id, { assigned_mechanic_id: mid, status: 'assigned' }, 'Assigned.')} />
           )}
           {actions.includes('start') && (
-            <button className="btn primary sm" onClick={async () => { await onTouch(); onPatch(w.id, { status: 'in_progress' }, 'Started.') }}>Start</button>
+            <button className="btn primary sm" onClick={() => onPatch(w.id, { status: 'in_progress' }, 'Started.')}>Start</button>
           )}
           {actions.includes('wait') && !waitMode && (
             <button className="btn ghost sm" onClick={() => { setWaitReason(w.waiting_reason || ''); setWaitMode(true) }}>{w.status === 'paused' ? 'Edit waiting' : 'Wait…'}</button>
